@@ -19,13 +19,31 @@ class FootballField:
         self._draw_pitch()
 
     def _draw_pitch(self):
-        # Midline
-        self.canvas.create_line(FIELD_WIDTH//2, 0, FIELD_WIDTH//2, FIELD_HEIGHT, fill='white', dash=(4, 2))
+        # Midline (thicker and bolder)
+        self.canvas.create_line(
+            FIELD_WIDTH // 2, 0,
+            FIELD_WIDTH // 2, FIELD_HEIGHT,
+            fill='white', dash=(10, 6), width=2, tags='static'
+        )
+
         # Goals
-        self.canvas.create_rectangle(0, (FIELD_HEIGHT-GOAL_WIDTH)//2, 10, (FIELD_HEIGHT+GOAL_WIDTH)//2, fill='white')
-        self.canvas.create_rectangle(FIELD_WIDTH-10, (FIELD_HEIGHT-GOAL_WIDTH)//2, FIELD_WIDTH, (FIELD_HEIGHT+GOAL_WIDTH)//2, fill='white')
-        # Center circle
-        self.canvas.create_oval(FIELD_WIDTH//2 - 50, FIELD_HEIGHT//2 - 50, FIELD_WIDTH//2 + 50, FIELD_HEIGHT//2 + 50, outline='white')
+        self.canvas.create_rectangle(
+            0, (FIELD_HEIGHT - GOAL_WIDTH) // 2,
+            10, (FIELD_HEIGHT + GOAL_WIDTH) // 2,
+            fill='white', tags='static'
+        )
+        self.canvas.create_rectangle(
+            FIELD_WIDTH - 10, (FIELD_HEIGHT - GOAL_WIDTH) // 2,
+            FIELD_WIDTH, (FIELD_HEIGHT + GOAL_WIDTH) // 2,
+            fill='white', tags='static'
+        )
+
+        # Center circle (thicker)
+        self.canvas.create_oval(
+            FIELD_WIDTH // 2 - 50, FIELD_HEIGHT // 2 - 50,
+            FIELD_WIDTH // 2 + 50, FIELD_HEIGHT // 2 + 50,
+            outline='white', width=3, tags='static'
+        )
 
     def add_agent(self, agent):
         self.agents.append(agent)
@@ -46,12 +64,12 @@ class FootballField:
             if hasattr(obj, 'is_ball') and obj.is_ball:
                 bx, by = obj.x, obj.y
                 # Left goal (Blue scores)
-                if bx <= 10 and (FIELD_HEIGHT-GOAL_WIDTH)//2 <= by <= (FIELD_HEIGHT+GOAL_WIDTH)//2:
+                if bx <= 10 and (FIELD_HEIGHT - GOAL_WIDTH) // 2 <= by <= (FIELD_HEIGHT + GOAL_WIDTH) // 2:
                     self.score['Blue'] += 1
                     print("Goal for Blue!", self.score)
                     obj.reset()
                 # Right goal (Red scores)
-                elif bx >= FIELD_WIDTH - 10 and (FIELD_HEIGHT-GOAL_WIDTH)//2 <= by <= (FIELD_HEIGHT+GOAL_WIDTH)//2:
+                elif bx >= FIELD_WIDTH - 10 and (FIELD_HEIGHT - GOAL_WIDTH) // 2 <= by <= (FIELD_HEIGHT + GOAL_WIDTH) // 2:
                     self.score['Red'] += 1
                     print("Goal for Red!", self.score)
                     obj.reset()

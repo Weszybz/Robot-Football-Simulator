@@ -9,7 +9,7 @@ class Bot:
         self.x = x
         self.y = y
         self.radius = 20
-        self.theta = random.uniform(0, 2 * math.pi)
+        self.theta = -math.pi / 2  # Point straight up
         self.speed_left = 0.0
         self.speed_right = 0.0
         self.team = team_color
@@ -17,23 +17,18 @@ class Bot:
         self.color = 'red' if team_color == 'Red' else 'blue'
 
     def update(self, canvas, agents, objects):
-        # Perceive environment
         percepts = self.sense(objects)
-
-        # Think and act
-        self.speed_left, self.speed_right = self.brain.think_and_act(percepts, self.x, self.y, self.speed_left, self.speed_right)
-
-        # Move
+        self.speed_left, self.speed_right = self.brain.think_and_act(
+            percepts, self.x, self.y, self.speed_left, self.speed_right
+        )
         self.move()
-
-        # Draw bot
         canvas.create_oval(
             self.x - self.radius, self.y - self.radius,
             self.x + self.radius, self.y + self.radius,
-            fill=self.color, tags='dynamic')
+            fill=self.color, tags='dynamic'
+        )
 
     def sense(self, objects):
-        # Simple sensing: find the ball's position
         ball = next((o for o in objects if hasattr(o, 'is_ball') and o.is_ball), None)
         if ball:
             dx = ball.x - self.x
@@ -50,22 +45,9 @@ class Bot:
         return {}
 
     def move(self):
-        # Differential drive kinematics
-        vl = self.speed_left
-        vr = self.speed_right
-        L = 10.0  # Distance between wheels
-
-        v = (vr + vl) / 2.0
-        omega = (vr - vl) / L
-
-        self.theta += omega
-        self.theta %= 2 * math.pi
-
-        self.x += v * math.cos(self.theta)
-        self.y += v * math.sin(self.theta)
-
-        # Keep in bounds
-        self.x = max(self.radius, min(FIELD_WIDTH - self.radius, self.x))
+        # Limit to vertical motion only
+        avg_speed = (self.speed_left + self.speed_right) / 2.0
+        self.y += avg_speed
         self.y = max(self.radius, min(FIELD_HEIGHT - self.radius, self.y))
 
     def _normalize_angle(self, angle):
