@@ -3,12 +3,12 @@ import time
 from football_field import FootballField
 from bot_base import Bot
 from ball import Ball
-from brains import ReactiveBrain, RandomWanderBrain, ChargeAtBallBrain
+from brains import ReactiveBrain, RandomWanderBrain, ChargeAtBallBrain, GoalkeeperBrain, StrikerBrain
 
 from ball import FIELD_WIDTH, FIELD_HEIGHT
 
 class ExperimentRunner:
-    def __init__(self, bot_brains, num_runs=5, match_duration=120):  # 2 minutes
+    def __init__(self, bot_brains, num_runs=1, match_duration=30):  # 2 minutes
         self.bot_brains = bot_brains
         self.num_runs = num_runs
         self.match_duration = match_duration  # in seconds
@@ -78,5 +78,5 @@ if __name__ == '__main__':
         'ChargeAtBallBrain': ChargeAtBallBrain
     }
 
-    runner = ExperimentRunner(bot_brains=brains_to_test, num_runs=3, match_duration=120)
+    runner = ExperimentRunner(bot_brains=brains_to_test, num_runs=1, match_duration=30)
     runner.run()

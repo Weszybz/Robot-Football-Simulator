@@ -9,7 +9,7 @@ class Bot:
         self.x = x
         self.y = y
         self.radius = 20
-        self.theta = -math.pi / 2  # Point straight up
+        self.theta = -math.pi / 2  # Not used in vertical-only mode
         self.speed_left = 0.0
         self.speed_right = 0.0
         self.team = team_color
@@ -45,7 +45,7 @@ class Bot:
         return {}
 
     def move(self):
-        # Limit to vertical motion only
+        # Vertical-only movement
         avg_speed = (self.speed_left + self.speed_right) / 2.0
         self.y += avg_speed
         self.y = max(self.radius, min(FIELD_HEIGHT - self.radius, self.y))
