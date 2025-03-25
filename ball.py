@@ -15,7 +15,7 @@ class Ball:
         self.x = FIELD_WIDTH // 2
         self.y = FIELD_HEIGHT // 2
         angle = random.uniform(0, 2 * math.pi)
-        speed = 6.0
+        speed = 10.0  # Increased ball speed
         self.dx = speed * math.cos(angle)
         self.dy = speed * math.sin(angle)
 

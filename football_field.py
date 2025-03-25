@@ -20,12 +20,29 @@ class FootballField:
 
     def _draw_pitch(self):
         # Midline
-        self.canvas.create_line(FIELD_WIDTH//2, 0, FIELD_WIDTH//2, FIELD_HEIGHT, fill='white', dash=(4, 2))
+        self.canvas.create_line(
+            FIELD_WIDTH // 2, 0, FIELD_WIDTH // 2, FIELD_HEIGHT,
+            fill='white', dash=(10, 6), width=2, tags='static'
+        )
+
         # Goals
-        self.canvas.create_rectangle(0, (FIELD_HEIGHT-GOAL_WIDTH)//2, 10, (FIELD_HEIGHT+GOAL_WIDTH)//2, fill='white')
-        self.canvas.create_rectangle(FIELD_WIDTH-10, (FIELD_HEIGHT-GOAL_WIDTH)//2, FIELD_WIDTH, (FIELD_HEIGHT+GOAL_WIDTH)//2, fill='white')
+        self.canvas.create_rectangle(
+            0, (FIELD_HEIGHT - GOAL_WIDTH) // 2,
+            10, (FIELD_HEIGHT + GOAL_WIDTH) // 2,
+            fill='white', tags='static'
+        )
+        self.canvas.create_rectangle(
+            FIELD_WIDTH - 10, (FIELD_HEIGHT - GOAL_WIDTH) // 2,
+            FIELD_WIDTH, (FIELD_HEIGHT + GOAL_WIDTH) // 2,
+            fill='white', tags='static'
+        )
+
         # Center circle
-        self.canvas.create_oval(FIELD_WIDTH//2 - 50, FIELD_HEIGHT//2 - 50, FIELD_WIDTH//2 + 50, FIELD_HEIGHT//2 + 50, outline='white')
+        self.canvas.create_oval(
+            FIELD_WIDTH // 2 - 50, FIELD_HEIGHT // 2 - 50,
+            FIELD_WIDTH // 2 + 50, FIELD_HEIGHT // 2 + 50,
+            outline='white', width=3, tags='static'
+        )
 
     def add_agent(self, agent):
         self.agents.append(agent)
@@ -35,23 +52,52 @@ class FootballField:
 
     def update(self):
         self.canvas.delete('dynamic')
+
         for obj in self.passive_objects:
             obj.update(self.canvas)
+
         for agent in self.agents:
             agent.update(self.canvas, self.agents, self.passive_objects)
+
+        self._check_collisions()
         self._check_goals()
+
+    def _check_collisions(self):
+        # Ball-bot collision detection
+        ball = next((o for o in self.passive_objects if hasattr(o, 'is_ball') and o.is_ball), None)
+        if not ball:
+            return
+
+        for bot in self.agents:
+            dx = ball.x - bot.x
+            dy = ball.y - bot.y
+            dist = (dx**2 + dy**2)**0.5
+            min_dist = ball.radius + bot.radius
+
+            if dist < min_dist:
+                # Normalize direction vector
+                if dist == 0:
+                    dist = 0.01  # avoid divide-by-zero
+                nx, ny = dx / dist, dy / dist
+
+                # Apply bounce effect
+                force = 8.0
+                ball.dx = nx * force
+                ball.dy = ny * force
 
     def _check_goals(self):
         for obj in self.passive_objects:
             if hasattr(obj, 'is_ball') and obj.is_ball:
                 bx, by = obj.x, obj.y
+
                 # Left goal (Blue scores)
-                if bx <= 10 and (FIELD_HEIGHT-GOAL_WIDTH)//2 <= by <= (FIELD_HEIGHT+GOAL_WIDTH)//2:
+                if bx <= 10 and (FIELD_HEIGHT - GOAL_WIDTH) // 2 <= by <= (FIELD_HEIGHT + GOAL_WIDTH) // 2:
                     self.score['Blue'] += 1
                     print("Goal for Blue!", self.score)
                     obj.reset()
+
                 # Right goal (Red scores)
-                elif bx >= FIELD_WIDTH - 10 and (FIELD_HEIGHT-GOAL_WIDTH)//2 <= by <= (FIELD_HEIGHT+GOAL_WIDTH)//2:
+                elif bx >= FIELD_WIDTH - 10 and (FIELD_HEIGHT - GOAL_WIDTH) // 2 <= by <= (FIELD_HEIGHT + GOAL_WIDTH) // 2:
                     self.score['Red'] += 1
                     print("Goal for Red!", self.score)
                     obj.reset()
