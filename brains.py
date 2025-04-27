@@ -1,6 +1,10 @@
 import random
 from football_field import FIELD_WIDTH, FIELD_HEIGHT, GOAL_WIDTH
 
+# TODO: Seperate the position brains to the perception ones. Position brains should adapt the perception brains depending on wht team they are on.
+# TODO: Perception Brains can be like different tactics and they all each have their own team.
+
+# TODO: Only the closest player should move towards the ball, everyone else moves relative to the position of the ball/teammates (maybe closest player=full speed, other teammates=half speed).
 class ReactiveBrain:
     """ Moves the bot vertically toward the ball. Slows down when near the ball. """
     def think_and_act(self, percepts, x, y, sl, sr):
@@ -41,30 +45,42 @@ class RandomWanderBrain:
 
 
 class GoalkeeperBrain:
-    """ Camps inside goal area and starts tracking the ball once it's within 100px in front of the goal.
-    """
+    """ Camps inside goal area and starts tracking the ball once it's within 100px in front of the goal."""
+    #TODO: Goalkeeper needs to reposition back to middle of goal when the ball is within it's vision (18-yard box).
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
+
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
         goal_top = (FIELD_HEIGHT - GOAL_WIDTH) // 2
         goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
+        goal_center_y = (goal_top + goal_bottom) // 2
+
         is_left_goalie = x < FIELD_WIDTH // 2
-        track_zone_x = 200
+        track_zone_x = 200  # Track/vision zone
+
+        # Determine if ball is in track zone
         if is_left_goalie:
             should_track = ball_x <= x + track_zone_x
         else:
             should_track = ball_x >= x - track_zone_x
-        if not should_track:
-            return 0.0, 0.0
-        if ball_y < goal_top or ball_y > goal_bottom:
-            return 0.0, 0.0
-        dy = ball_y - y
+
+        # Track the ball vertically if in zone and ball is within goal vertical range
+        if should_track and goal_top <= ball_y <= goal_bottom:
+            dy = ball_y - y
+            if abs(dy) < 5:
+                return 0.0, 0.0
+            direction = 1 if dy > 0 else -1
+            speed = min(6.0, max(2.0, abs(dy) / 10))
+            return direction * speed, direction * speed
+
+        # If ball is outside the track zone, reposition to goal center
+        dy = goal_center_y - y
         if abs(dy) < 5:
-            return 0.0, 0.0
+            return 0.0, 0.0  # Already at center or close enough
         direction = 1 if dy > 0 else -1
-        speed = min(6.0, max(2.0, abs(dy) / 10))
+        speed = min(4.0, max(1.5, abs(dy) / 15))
         return direction * speed, direction * speed
 
 
@@ -75,6 +91,8 @@ class StrikerBrain:
     - Gets behind the ball
     - When close, "kicks" ball toward goal by positioning
     """
+
+    # TODO: Striker needs to be aim at the goal everytime.
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
@@ -105,6 +123,7 @@ class DefenderBrain:
     - Stays in defensive half
     - Moves vertically to block the ball
     """
+    #TODO: Defenders should only stay on their side of the pitch e.g. Left Back only navigates the left side of the pitch. The Right Back should be in a reasonable position (maybe have a given space between).
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
