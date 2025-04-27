@@ -7,16 +7,6 @@ FIELD_HEIGHT = 600
 GOAL_WIDTH = 200
 
 class FootballField:
-    def __init__(self, root):
-        self.root = root
-        self.canvas = tk.Canvas(root, width=FIELD_WIDTH, height=FIELD_HEIGHT, bg='green')
-        self.canvas.pack()
-
-        self.agents = []
-        self.passive_objects = []
-        self.score = {'Red': 0, 'Blue': 0}
-
-        self._draw_pitch()
 
     def _draw_pitch(self):
         # Midline
@@ -24,6 +14,47 @@ class FootballField:
             FIELD_WIDTH // 2, 0, FIELD_WIDTH // 2, FIELD_HEIGHT,
             fill='white', dash=(10, 6), width=2, tags='static'
         )
+
+        # 18-yard box
+        self.canvas.create_line(FIELD_WIDTH // 4, (FIELD_HEIGHT // 6), FIELD_WIDTH // 4, 5 * (FIELD_HEIGHT // 6), fill='white', width=2, tags='static')
+        self.canvas.create_line(0, (FIELD_HEIGHT // 6), FIELD_WIDTH // 4, (FIELD_HEIGHT // 6),
+                                fill='white', width=2, tags='static')
+        self.canvas.create_line(0, 5 * (FIELD_HEIGHT // 6), FIELD_WIDTH // 4, 5 * (FIELD_HEIGHT // 6),
+                                fill='white', width=2, tags='static')
+
+        self.canvas.create_line(3*(FIELD_WIDTH // 4), (FIELD_HEIGHT // 6), 3 * (FIELD_WIDTH // 4), 5 * (FIELD_HEIGHT // 6), fill='white', width =2, tags='static')
+        self.canvas.create_line(3 * (FIELD_WIDTH // 4), (FIELD_HEIGHT // 6), FIELD_WIDTH, (FIELD_HEIGHT // 6),
+                                fill='white', width=2, tags='static')
+        self.canvas.create_line(3 * (FIELD_WIDTH // 4), 5 * (FIELD_HEIGHT // 6), FIELD_WIDTH, 5 * (FIELD_HEIGHT // 6),
+                                fill='white', width=2, tags='static')
+
+        # Penalty spot
+        self.canvas.create_oval(
+            FIELD_WIDTH // 6, FIELD_HEIGHT // 2,
+            FIELD_WIDTH // 6, FIELD_HEIGHT // 2,
+            outline='white', width=8, tags='static'
+        )
+        self.canvas.create_oval(
+            5 * FIELD_WIDTH // 6, FIELD_HEIGHT // 2,
+            5 * FIELD_WIDTH // 6, FIELD_HEIGHT // 2,
+            outline='white', width=8, tags='static'
+        )
+
+        # 6-yard box
+        self.canvas.create_line(FIELD_WIDTH // 12, (FIELD_HEIGHT // 3.5), FIELD_WIDTH // 12, 2.5 * (FIELD_HEIGHT // 3.5),
+                                fill='white', width=2, tags='static')
+        self.canvas.create_line(0, (FIELD_HEIGHT // 3.5), FIELD_WIDTH // 12, (FIELD_HEIGHT // 3.5),
+                                fill='white', width=2, tags='static')
+        self.canvas.create_line(0, 2.5 * (FIELD_HEIGHT // 3.5), FIELD_WIDTH // 12, 2.5 * (FIELD_HEIGHT // 3.5),
+                                fill='white', width=2, tags='static')
+
+        self.canvas.create_line(11 * FIELD_WIDTH // 12, (FIELD_HEIGHT // 3.5), 11 * FIELD_WIDTH // 12,
+                                2.5 * (FIELD_HEIGHT // 3.5),
+                                fill='white', width=2, tags='static')
+        self.canvas.create_line(11 * FIELD_WIDTH // 12, (FIELD_HEIGHT // 3.5), FIELD_WIDTH, (FIELD_HEIGHT // 3.5),
+                                fill='white', width=2, tags='static')
+        self.canvas.create_line(11 * FIELD_WIDTH // 12, 2.5 * (FIELD_HEIGHT // 3.5), FIELD_WIDTH, 2.5 * (FIELD_HEIGHT // 3.5),
+                                fill='white', width=2, tags='static')
 
         # Goals
         self.canvas.create_rectangle(
@@ -42,6 +73,11 @@ class FootballField:
             FIELD_WIDTH // 2 - 50, FIELD_HEIGHT // 2 - 50,
             FIELD_WIDTH // 2 + 50, FIELD_HEIGHT // 2 + 50,
             outline='white', width=3, tags='static'
+        )
+        self.canvas.create_oval(
+            FIELD_WIDTH // 2, FIELD_HEIGHT // 2,
+            FIELD_WIDTH // 2, FIELD_HEIGHT // 2,
+            outline='white', width=6, tags='static'
         )
 
     def add_agent(self, agent):
@@ -105,3 +141,14 @@ class FootballField:
     def run(self):
         self.update()
         self.root.after(50, self.run)
+
+    def __init__(self, root):
+        self.root = root
+        self.canvas = tk.Canvas(root, width=FIELD_WIDTH, height=FIELD_HEIGHT, bg='green')
+        self.canvas.pack()
+
+        self.agents = []
+        self.passive_objects = []
+        self.score = {'Red': 0, 'Blue': 0}
+
+        self._draw_pitch()

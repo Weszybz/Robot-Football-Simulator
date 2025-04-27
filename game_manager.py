@@ -16,8 +16,8 @@ def create_game():
     field.add_passive_object(ball)
 
     # Create bots with different brains
-    red_bot = Bot(x=100, y=FIELD_HEIGHT // 2, team_color='Red', brain=GoalkeeperBrain())
-    blue_bot = Bot(x=FIELD_WIDTH - 100, y=FIELD_HEIGHT // 2, team_color='Blue', brain=ChargeAtBallBrain())
+    red_bot = Bot(x=50, y=FIELD_HEIGHT // 2, team_color='Red', brain=GoalkeeperBrain())
+    blue_bot = Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=ChargeAtBallBrain())
 
     field.add_agent(red_bot)
     field.add_agent(blue_bot)
