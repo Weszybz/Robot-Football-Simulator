@@ -2,7 +2,7 @@ import tkinter as tk
 from football_field import FootballField
 from bot_base import Bot
 from ball import Ball
-from brains import ReactiveBrain, RandomWanderBrain, ChargeAtBallBrain, GoalkeeperBrain, StrikerBrain
+from brains import ReactiveBrain, RandomWanderBrain, ChargeAtBallBrain, GoalkeeperBrain, StrikerBrain, DefenderBrain, MidfielderBrain
 
 
 def create_game():
@@ -16,11 +16,19 @@ def create_game():
     field.add_passive_object(ball)
 
     # Create bots with different brains
-    red_bot = Bot(x=50, y=FIELD_HEIGHT // 2, team_color='Red', brain=GoalkeeperBrain())
-    blue_bot = Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=ChargeAtBallBrain())
+    red_team = [
+        Bot(x=50, y=FIELD_HEIGHT // 2, team_color='Red', brain=GoalkeeperBrain()),
+        Bot(x=150, y=FIELD_HEIGHT // 4, team_color='Red', brain=DefenderBrain(role='left_back')),
+        Bot(x=150, y=3 * (FIELD_HEIGHT // 4), team_color='Red', brain=DefenderBrain(role='right_back')),
+    ]
+    for bot in red_team:
+        field.add_agent(bot)
 
-    field.add_agent(red_bot)
-    field.add_agent(blue_bot)
+    blue_team = [
+        Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=StrikerBrain())
+        ]
+    for bot in blue_team:
+        field.add_agent(bot)
 
     field.run()
     root.mainloop()

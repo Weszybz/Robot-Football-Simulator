@@ -40,7 +40,9 @@ class Bot:
                 'distance_to_ball': dist,
                 'angle_to_ball': rel_angle,
                 'ball_x': ball.x,
-                'ball_y': ball.y
+                'ball_y': ball.y,
+                'ball_dx': ball.dx,
+                'ball_dy': ball.dy
             }
         return {}
 

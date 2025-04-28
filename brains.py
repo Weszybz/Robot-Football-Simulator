@@ -1,5 +1,8 @@
 import random
+import math
 from football_field import FIELD_WIDTH, FIELD_HEIGHT, GOAL_WIDTH
+MIN_SPACING = 20.0
+REPULSION_FACTOR = 5.0
 
 # TODO: Seperate the position brains to the perception ones. Position brains should adapt the perception brains depending on wht team they are on.
 # TODO: Perception Brains can be like different tactics and they all each have their own team.
@@ -99,51 +102,133 @@ class StrikerBrain:
 
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-        dy = ball_y - y
+        ball_dx = percepts.get('ball_dx', 0.0)
+        ball_dy = percepts.get('ball_dy', 0.0)
 
         is_left_team = x < FIELD_WIDTH // 2
-        behind_ball = (x < ball_x - 15) if is_left_team else (x > ball_x + 15)
-        aligned_vertically = abs(dy) < 10
+        goal_x = FIELD_WIDTH if is_left_team else 0
+        goal_top = (FIELD_HEIGHT - GOAL_WIDTH) // 2
+        goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
+        goal_center_y = (goal_top + goal_bottom) // 2
+
+        # Predict when ball will reach striker's x
+        if ball_dx == 0:
+            predicted_ball_y = ball_y
+        else:
+            time_to_reach = (x - ball_x) / ball_dx
+            if time_to_reach < 0:
+                predicted_ball_y = ball_y
+            else:
+                predicted_ball_y = ball_y + ball_dy * time_to_reach
+                # Bounce handling
+                bounces = 0
+                while predicted_ball_y < 0 or predicted_ball_y > FIELD_HEIGHT:
+                    if predicted_ball_y < 0:
+                        predicted_ball_y = -predicted_ball_y
+                    elif predicted_ball_y > FIELD_HEIGHT:
+                        predicted_ball_y = 2 * FIELD_HEIGHT - predicted_ball_y
+                    bounces += 1
+                    if bounces > 2:
+                        break
+
+        # Calculate desired vertical offset based on goal alignment
+        dx_to_goal = goal_x - x
+        dy_to_goal = goal_center_y - predicted_ball_y
+        desired_deflection_angle = math.atan2(dy_to_goal, dx_to_goal)
+
+        # Let's increase the offset for stronger deflection control
+        # Also scale based on distance to goal for better accuracy
+        distance_to_goal = abs(goal_x - x)
+        offset_magnitude = 25.0 * math.sin(desired_deflection_angle) * (distance_to_goal / FIELD_WIDTH)
+
+        desired_y = predicted_ball_y + offset_magnitude
+
+        # Debug output
+        # print(f"Ball Y: {ball_y}, Predicted Ball Y: {predicted_ball_y}, Desired Y: {desired_y}, Striker Y: {y}")
+        # print(f"Offset: {offset_magnitude}, Angle to Goal: {math.degrees(desired_deflection_angle)}")
+
+        dy = desired_y - y
+        aligned_vertically = abs(dy) < 5
 
         if not aligned_vertically:
             direction = 1 if dy > 0 else -1
             speed = min(8.0, max(2.0, abs(dy) / 10))
             return direction * speed, direction * speed
 
-        if behind_ball:
+        ball_close = abs(ball_x - x) < 25
+        if ball_close:
             push_speed = 6.0 if is_left_team else -6.0
             return push_speed, push_speed
-        else:
-            return -2.0, -2.0 if is_left_team else (2.0, 2.0)
+
+        return 0.0, 0.0
 
 
 class DefenderBrain:
-    """
-    Defensive AI:
-    - Stays in defensive half
-    - Moves vertically to block the ball
-    """
-    #TODO: Defenders should only stay on their side of the pitch e.g. Left Back only navigates the left side of the pitch. The Right Back should be in a reasonable position (maybe have a given space between).
+    def __init__(self, role='left_back'):
+        self.role = role
+        if role == 'left_back':
+            self.x_min, self.x_max = 0, FIELD_WIDTH // 4
+            self.base_x, self.base_y = 80, FIELD_HEIGHT // 4
+        elif role == 'right_back':
+            self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
+            self.base_x, self.base_y = 80, 3 * FIELD_HEIGHT // 4
+        else:
+            self.x_min, self.x_max = 0, FIELD_WIDTH // 2
+            self.base_x, self.base_y = 80, FIELD_HEIGHT // 2
+
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
 
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-        dy = ball_y - y
+        teammates = percepts.get('teammates', [])
 
         is_left_team = x < FIELD_WIDTH // 2
-        in_defensive_half = ball_x < FIELD_WIDTH // 2 if is_left_team else ball_x > FIELD_WIDTH // 2
+        # Vision zone: defenders act only in their half
+        if is_left_team:
+            in_vision_zone = ball_x <= FIELD_WIDTH // 4  # Only 1/4 of field for left team
+        else:
+            in_vision_zone = ball_x >= FIELD_WIDTH * 3 // 4  # Only 1/4 of field for right team
 
-        if not in_defensive_half:
+        # If ball is out of vision, ignore it and return to base
+        if not in_vision_zone:
+            return self._move_towards(x, y, self.base_x, self.base_y)
+
+        dx, dy = 0.0, 0.0
+        # Stay within horizontal limits
+        if x < self.x_min:
+            dx += 2.0
+        elif x > self.x_max:
+            dx -= 2.0
+
+        # Repel from teammates
+        for mate_x, mate_y in teammates:
+            dist_x = x - mate_x
+            dist_y = y - mate_y
+            dist = (dist_x**2 + dist_y**2)**0.5
+            if dist < MIN_SPACING and dist > 0:
+                strength = REPULSION_FACTOR * (1 + (MIN_SPACING - dist) / MIN_SPACING)
+                dx += (dist_x / dist) * strength
+                dy += (dist_y / dist) * strength
+
+        # Track ball vertically within vision
+        vertical_diff = ball_y - y
+        if abs(vertical_diff) > 5:
+            direction_y = 1 if vertical_diff > 0 else -1
+            speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
+            dy += direction_y * speed_y
+
+        return dx, dy
+
+    def _move_towards(self, x, y, target_x, target_y):
+        dx = target_x - x
+        dy = target_y - y
+        dist = (dx**2 + dy**2)**0.5
+        if dist < 3:
             return 0.0, 0.0
-
-        if abs(dy) < 5:
-            return 0.0, 0.0
-
-        direction = 1 if dy > 0 else -1
-        speed = min(7.0, max(2.0, abs(dy) / 10))
-        return direction * speed, direction * speed
+        move_speed = min(5.0, dist / 5.0)  # Faster return speed
+        return (dx / dist) * move_speed, (dy / dist) * move_speed
 
 
 class MidfielderBrain:
