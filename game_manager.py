@@ -20,12 +20,18 @@ def create_game():
         Bot(x=50, y=FIELD_HEIGHT // 2, team_color='Red', brain=GoalkeeperBrain()),
         Bot(x=150, y=FIELD_HEIGHT // 4, team_color='Red', brain=DefenderBrain(role='left_back')),
         Bot(x=150, y=3 * (FIELD_HEIGHT // 4), team_color='Red', brain=DefenderBrain(role='right_back')),
+        Bot(x=250, y=FIELD_HEIGHT // 2, team_color='Red', brain=MidfielderBrain()),
+        Bot(x=350, y=FIELD_HEIGHT // 2, team_color='Red', brain=StrikerBrain()),
     ]
     for bot in red_team:
         field.add_agent(bot)
 
     blue_team = [
-        Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=StrikerBrain())
+        Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=GoalkeeperBrain()),
+        Bot(x=FIELD_WIDTH - 150, y=FIELD_HEIGHT // 4, team_color='Blue', brain=DefenderBrain(role='left_back')),
+        Bot(x=FIELD_WIDTH - 150, y=3 * (FIELD_HEIGHT // 4), team_color='Blue', brain=DefenderBrain(role='right_back')),
+        Bot(x=FIELD_WIDTH - 250, y=FIELD_HEIGHT // 2, team_color='Blue', brain=MidfielderBrain()),
+        Bot(x=FIELD_WIDTH - 350, y=FIELD_HEIGHT // 2, team_color='Blue', brain=StrikerBrain()),
         ]
     for bot in blue_team:
         field.add_agent(bot)

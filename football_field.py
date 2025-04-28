@@ -86,8 +86,30 @@ class FootballField:
     def add_passive_object(self, obj):
         self.passive_objects.append(obj)
 
+    def assign_closest_percepts(self, team_bots, ball):
+        def distance_to_ball(bot):
+            return ((bot.x - ball.x) ** 2 + (bot.y - ball.y) ** 2) ** 0.5
+
+        closest_bot = min(team_bots, key=distance_to_ball)
+
+        for bot in team_bots:
+            bot.external_percepts = {
+                'is_closest': (bot == closest_bot),
+                'teammates': [(mate.x, mate.y) for mate in team_bots if mate != bot]
+            }
+
     def update(self):
         self.canvas.delete('dynamic')
+
+        ball = next((o for o in self.passive_objects if hasattr(o, 'is_ball') and o.is_ball), None)
+
+        # --- Assign Closest Percepts ---
+        if ball:
+            red_team = [bot for bot in self.agents if bot.team == 'Red']
+            blue_team = [bot for bot in self.agents if bot.team == 'Blue']
+
+            self.assign_closest_percepts(red_team, ball)
+            self.assign_closest_percepts(blue_team, ball)
 
         for obj in self.passive_objects:
             obj.update(self.canvas)
