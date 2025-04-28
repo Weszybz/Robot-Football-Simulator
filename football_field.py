@@ -5,6 +5,7 @@ import random
 FIELD_WIDTH = 1000
 FIELD_HEIGHT = 600
 GOAL_WIDTH = 200
+FIELD_MARGIN = 5
 
 class FootballField:
 
@@ -121,27 +122,48 @@ class FootballField:
         self._check_goals()
 
     def _check_collisions(self):
-        # Ball-bot collision detection
+        # --- Ball-bot collision detection ---
         ball = next((o for o in self.passive_objects if hasattr(o, 'is_ball') and o.is_ball), None)
-        if not ball:
-            return
+        if ball:
+            for bot in self.agents:
+                dx = ball.x - bot.x
+                dy = ball.y - bot.y
+                dist = (dx ** 2 + dy ** 2) ** 0.5
+                min_dist = ball.radius + bot.radius
 
-        for bot in self.agents:
-            dx = ball.x - bot.x
-            dy = ball.y - bot.y
-            dist = (dx**2 + dy**2)**0.5
-            min_dist = ball.radius + bot.radius
+                if dist < min_dist:
+                    # Normalize direction vector
+                    if dist == 0:
+                        dist = 0.01  # Avoid divide-by-zero
+                    nx, ny = dx / dist, dy / dist
 
-            if dist < min_dist:
-                # Normalize direction vector
-                if dist == 0:
-                    dist = 0.01  # avoid divide-by-zero
-                nx, ny = dx / dist, dy / dist
+                    # Apply bounce effect
+                    force = 8.0
+                    ball.dx = nx * force
+                    ball.dy = ny * force
 
-                # Apply bounce effect
-                force = 8.0
-                ball.dx = nx * force
-                ball.dy = ny * force
+        # --- Bot-bot collision detection ---
+        num_bots = len(self.agents)
+        extra_gap = 50.0
+        for i in range(num_bots):
+            for j in range(i + 1, num_bots):
+                bot1 = self.agents[i]
+                bot2 = self.agents[j]
+                dx = bot2.x - bot1.x
+                dy = bot2.y - bot1.y
+                dist = (dx ** 2 + dy ** 2) ** 0.5
+                min_dist = bot1.radius + bot2.radius + extra_gap
+
+                if dist < min_dist and dist > 0:
+                    # Normalize direction vector
+                    nx, ny = dx / dist, dy / dist
+
+                    # Push bots apart
+                    overlap = min_dist - dist
+                    bot1.x -= nx * overlap / 2
+                    bot1.y -= ny * overlap / 2
+                    bot2.x += nx * overlap / 2
+                    bot2.y += ny * overlap / 2
 
     def _check_goals(self):
         for obj in self.passive_objects:

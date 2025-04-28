@@ -35,6 +35,10 @@ class Ball:
             if not ((FIELD_HEIGHT - GOAL_WIDTH)//2 <= self.y <= (FIELD_HEIGHT + GOAL_WIDTH)//2):
                 self.dx *= -1
 
+        # --- HARD Boundaries to prevent weird glitches ---
+        self.x = max(self.radius, min(FIELD_WIDTH - self.radius, self.x))
+        self.y = max(self.radius, min(FIELD_HEIGHT - self.radius, self.y))
+
         # Draw
         canvas.create_oval(
             self.x - self.radius, self.y - self.radius,

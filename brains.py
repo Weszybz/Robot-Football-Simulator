@@ -1,6 +1,6 @@
 import random
 import math
-from football_field import FIELD_WIDTH, FIELD_HEIGHT, GOAL_WIDTH
+from football_field import FIELD_WIDTH, FIELD_HEIGHT, GOAL_WIDTH, FIELD_MARGIN
 MIN_SPACING = 20.0
 REPULSION_FACTOR = 5.0
 
@@ -104,6 +104,8 @@ class StrikerBrain:
         ball_y = percepts['ball_y']
         ball_dx = percepts.get('ball_dx', 0.0)
         ball_dy = percepts.get('ball_dy', 0.0)
+        is_closest = percepts.get('is_closest', False)
+        ball_from_teammate = percepts.get('ball_from_teammate', False)
 
         is_left_team = x < FIELD_WIDTH // 2
         goal_x = FIELD_WIDTH if is_left_team else 0
@@ -111,16 +113,15 @@ class StrikerBrain:
         goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
         goal_center_y = (goal_top + goal_bottom) // 2
 
-        # Predict when ball will reach striker's x
-        if ball_dx == 0:
-            predicted_ball_y = ball_y
-        else:
+        dx, dy = 0.0, 0.0
+
+        # --- Predict Ball Y if from teammate ---
+        if ball_from_teammate and ball_dx != 0:
             time_to_reach = (x - ball_x) / ball_dx
             if time_to_reach < 0:
                 predicted_ball_y = ball_y
             else:
                 predicted_ball_y = ball_y + ball_dy * time_to_reach
-                # Bounce handling
                 bounces = 0
                 while predicted_ball_y < 0 or predicted_ball_y > FIELD_HEIGHT:
                     if predicted_ball_y < 0:
@@ -130,51 +131,59 @@ class StrikerBrain:
                     bounces += 1
                     if bounces > 2:
                         break
+        else:
+            predicted_ball_y = ball_y  # No prediction
 
-        # Calculate desired vertical offset based on goal alignment
+        # --- Calculate Aiming Offset ---
         dx_to_goal = goal_x - x
         dy_to_goal = goal_center_y - predicted_ball_y
         desired_deflection_angle = math.atan2(dy_to_goal, dx_to_goal)
 
-        # Let's increase the offset for stronger deflection control
-        # Also scale based on distance to goal for better accuracy
+        # Offset Y position to align shot toward goal
         distance_to_goal = abs(goal_x - x)
         offset_magnitude = 25.0 * math.sin(desired_deflection_angle) * (distance_to_goal / FIELD_WIDTH)
-
         desired_y = predicted_ball_y + offset_magnitude
 
-        # Debug output
-        # print(f"Ball Y: {ball_y}, Predicted Ball Y: {predicted_ball_y}, Desired Y: {desired_y}, Striker Y: {y}")
-        # print(f"Offset: {offset_magnitude}, Angle to Goal: {math.degrees(desired_deflection_angle)}")
+        # --- Move Vertically Toward Desired Y ---
+        dy_to_desired = desired_y - y
+        if abs(dy_to_desired) > 5:
+            direction = 1 if dy_to_desired > 0 else -1
+            speed = min(8.0, max(2.0, abs(dy_to_desired) / 10))
+            dy = direction * speed
+        else:
+            # Close to desired position and ball, push ball towards goal
+            ball_close = abs(ball_x - x) < 25
+            if ball_close and is_closest:
+                dx = 6.0 if is_left_team else -6.0
+                dy = 0.0
 
-        dy = desired_y - y
-        aligned_vertically = abs(dy) < 5
-
-        if not aligned_vertically:
-            direction = 1 if dy > 0 else -1
-            speed = min(8.0, max(2.0, abs(dy) / 10))
-            return direction * speed, direction * speed
-
-        ball_close = abs(ball_x - x) < 25
-        if ball_close:
-            push_speed = 6.0 if is_left_team else -6.0
-            return push_speed, push_speed
-
-        return 0.0, 0.0
+        return dx, dy
 
 
 class DefenderBrain:
     def __init__(self, role='left_back'):
         self.role = role
-        if role == 'left_back':
-            self.x_min, self.x_max = 0, FIELD_WIDTH // 4
-            self.base_x, self.base_y = 80, FIELD_HEIGHT // 4
-        elif role == 'right_back':
-            self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
-            self.base_x, self.base_y = 80, 3 * FIELD_HEIGHT // 4
+        self.initialized = False
+
+    def setup(self, is_left_team):
+        if is_left_team:
+            if self.role == 'left_back':
+                self.base_x = 200
+                self.base_y = FIELD_HEIGHT // 4
+            elif self.role == 'right_back':
+                self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
+                self.base_x = 200
+                self.base_y = 3 * FIELD_HEIGHT // 4
         else:
-            self.x_min, self.x_max = 0, FIELD_WIDTH // 2
-            self.base_x, self.base_y = 80, FIELD_HEIGHT // 2
+            if self.role == 'left_back':
+                self.base_x = FIELD_WIDTH - 200
+                self.base_y = FIELD_HEIGHT // 4
+            elif self.role == 'right_back':
+                self.x_min, self.x_max = FIELD_WIDTH // 2, 3 * FIELD_WIDTH // 4
+                self.base_x = FIELD_WIDTH - 200
+                self.base_y = 3 * FIELD_HEIGHT // 4
+
+        self.initialized = True
 
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
@@ -185,36 +194,40 @@ class DefenderBrain:
         teammates = percepts.get('teammates', [])
 
         is_left_team = x < FIELD_WIDTH // 2
-        track_zone_x = FIELD_WIDTH // 4  # Defenders track only in defensive quarter
+        is_right_team = x > FIELD_WIDTH // 2
 
-        # Determine if ball is in vision/track zone
+        if not self.initialized:
+            self.setup(is_left_team)
+
+        # 1. Calculate whether ball is inside defender's field of view (half field)
         if is_left_team:
-            should_track = ball_x <= track_zone_x
+            should_track = ball_x <= FIELD_WIDTH // 2
+        elif is_right_team:
+            should_track = ball_x >= FIELD_WIDTH // 2
         else:
-            should_track = ball_x >= FIELD_WIDTH - track_zone_x
-
-        # If not tracking, return to base
-        if not should_track:
-            return self._move_towards(x, y, self.base_x, self.base_y)
+            should_track = ball_x >= FIELD_WIDTH // 2
 
         dx, dy = 0.0, 0.0
 
-        # Stay in horizontal zone
-        if x < self.x_min:
-            dx += 2.0
-        elif x > self.x_max:
-            dx -= 2.0
-
-        # Repel from teammates
+        # --- Always repel from teammates ---
         for mate_x, mate_y in teammates:
             dist_x = x - mate_x
             dist_y = y - mate_y
-            dist = (dist_x**2 + dist_y**2)**0.5
-            if dist < 20.0 and dist > 0:
-                dx += (dist_x / dist) * 5.0
-                dy += (dist_y / dist) * 5.0
+            dist = (dist_x ** 2 + dist_y ** 2) ** 0.5
+            if dist < MIN_SPACING and dist > 0:
+                dx += (dist_x / dist) * REPULSION_FACTOR
+                dy += (dist_y / dist) * REPULSION_FACTOR
 
-        # Track the ball vertically
+        if not should_track:
+            # --- Ball is NOT in view -> Return to base ---
+            move_dx, move_dy = self._move_towards(x, y, self.base_x, self.base_y)
+            dx += move_dx
+            dy += move_dy
+            return dx, dy
+
+        # --- Ball IS in view -> track vertically and stay inside zone ---
+
+        # Track ball vertically
         vertical_diff = ball_y - y
         if abs(vertical_diff) > 5:
             direction_y = 1 if vertical_diff > 0 else -1
@@ -234,12 +247,6 @@ class DefenderBrain:
 
 
 class MidfielderBrain:
-    """
-    Facilitates passes and transitions:
-    - Aligns with ball within vision zone
-    - Returns to base position when ball is out of vision
-    """
-
     def __init__(self):
         self.base_x = FIELD_WIDTH // 2
         self.base_y = FIELD_HEIGHT // 2
@@ -251,16 +258,17 @@ class MidfielderBrain:
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
 
-        # Define vision zone: middle third
-        vision_min_x = FIELD_WIDTH // 3
-        vision_max_x = 2 * FIELD_WIDTH // 3
-        in_vision_zone = vision_min_x <= ball_x <= vision_max_x
+        # Midfielder track zone is middle third
+        track_zone_min_x = FIELD_WIDTH // 3
+        track_zone_max_x = 2 * FIELD_WIDTH // 3
 
-        # 1. If ball is out of vision -> go back to base
-        if not in_vision_zone:
+        should_track = track_zone_min_x <= ball_x <= track_zone_max_x
+
+        # If not tracking, return to base
+        if not should_track:
             return self._move_towards(x, y, self.base_x, self.base_y)
 
-        # 2. Ball is in vision -> align vertically with ball
+        # Track vertically with ball
         dy = ball_y - y
         aligned_vertically = abs(dy) < 10
 
@@ -269,7 +277,7 @@ class MidfielderBrain:
             speed = min(7.0, max(2.0, abs(dy) / 10))
             return direction * speed, direction * speed
 
-        # 3. Aligned -> push forward
+        # Push forward toward goal
         is_left_team = x < FIELD_WIDTH // 2
         push_speed = 4.0 if is_left_team else -4.0
         return push_speed, push_speed
@@ -279,8 +287,8 @@ class MidfielderBrain:
         dy = target_y - y
         dist = (dx**2 + dy**2)**0.5
         if dist < 3:
-            return 0.0, 0.0  # Close enough to base
-        move_speed = min(5.0, dist / 5.0)  # Faster return to base
+            return 0.0, 0.0
+        move_speed = min(5.0, dist / 5.0)
         return (dx / dist) * move_speed, (dy / dist) * move_speed
 
 
