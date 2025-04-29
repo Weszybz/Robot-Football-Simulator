@@ -281,20 +281,50 @@ class FootballField:
         # Optionally show a "Full Time" banner
 
     def prompt_resume_second_half(self):
-        response = tkinter.messagebox.askokcancel(
-            "Half Time",
-            "Half-Time!\nClick OK to start the second half."
-        )
+        self.half_time_window = tk.Toplevel(self.root)
+        self.half_time_window.title("Half-Time")
+        self.half_time_window.geometry("400x300")  # Width x Height
+        self.half_time_window.configure(bg='navy')
 
-        if response:
-            self.resume_game()
+        # --- Title ---
+        title_label = tk.Label(
+            self.half_time_window,
+            text="HALF TIME",
+            font=("Arial", 24, "bold"),
+            fg="white",
+            bg="navy"
+        )
+        title_label.pack(pady=20)
+
+        # --- Placeholder for future stats ---
+        stats_label = tk.Label(
+            self.half_time_window,
+            text="Stats coming soon...",
+            font=("Arial", 14),
+            fg="white",
+            bg="navy"
+        )
+        stats_label.pack(pady=10)
+
+        # --- Resume Button ---
+        resume_button = tk.Button(
+            self.half_time_window,
+            text="Start Second Half",
+            font=("Arial", 16),
+            command=self._start_second_half  # <- supposed to resume
+        )
+        resume_button.pack(pady=20)
+
+    def _start_second_half(self):
+        self.half_time_window.destroy()  # Close the halftime popup
+        self.resume_game()  # Resume the match
 
     def run(self):
         if self.match_running:
             self.update()
 
-        if not self.match_running:
-            return  # Stop ticking after match ends
+        # if not self.match_running:
+        #     return  # Stop ticking after match ends
 
         self.elapsed_time += 1
 
@@ -303,7 +333,6 @@ class FootballField:
             print("Half Time!")
             self.half_time_reached = True
             self.match_running = False
-            self.pause_game()
             self.prompt_resume_second_half()
 
         # --- Full-time ---
@@ -313,7 +342,7 @@ class FootballField:
             self.match_running = False
             self.end_game()
 
-        self.root.after(50, self.run)
+        self.root.after(5, self.run)
 
     def __init__(self, root):
         self.root = root
