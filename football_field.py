@@ -1,11 +1,12 @@
 import tkinter as tk
 import time
 import random
+import tkinter.messagebox
 
 FIELD_WIDTH = 1000
 FIELD_HEIGHT = 600
 GOAL_WIDTH = 200
-FIELD_MARGIN = 5
+FIELD_MARGIN = 20
 
 class FootballField:
 
@@ -81,11 +82,91 @@ class FootballField:
             outline='white', width=6, tags='static'
         )
 
+    def draw_scoreboard(self):
+        # --- Parameters for compact design ---
+        center_x = 100
+        top_y = 10
+        box_height = 30
+        box_width = 50
+        score_box_width = 40
+        timer_box_width = 50
+
+        # --- Background (optional black bar behind) ---
+        self.canvas.create_rectangle(
+            center_x - (score_box_width + box_width + timer_box_width) // 2,
+            top_y,
+            center_x + (score_box_width + box_width + timer_box_width) // 2,
+            top_y + box_height,
+            fill='black', outline='', tags='scoreboard'
+        )
+
+        # --- Left team block (Red) ---
+        self.canvas.create_rectangle(
+            center_x - (score_box_width // 2 + box_width),
+            top_y,
+            center_x - (score_box_width // 2),
+            top_y + box_height,
+            fill='red', outline='', tags='scoreboard'
+        )
+        self.canvas.create_text(
+            center_x - (score_box_width // 2 + box_width // 2),
+            top_y + box_height // 2,
+            text="RED", font=('Arial', 12, 'bold'),
+            fill='white', tags='scoreboard'
+        )
+
+        # --- Right team block (Blue) ---
+        self.canvas.create_rectangle(
+            center_x + (score_box_width // 2),
+            top_y,
+            center_x + (score_box_width // 2 + box_width),
+            top_y + box_height,
+            fill='blue', outline='', tags='scoreboard'
+        )
+        self.canvas.create_text(
+            center_x + (score_box_width // 2 + box_width // 2),
+            top_y + box_height // 2,
+            text="BLUE", font=('Arial', 12, 'bold'),
+            fill='white', tags='scoreboard'
+        )
+
+        # --- Score text ("0 - 0") ---
+        score_text = f"{self.score['Red']} - {self.score['Blue']}"
+        self.canvas.create_text(
+            center_x,
+            top_y + box_height // 2,
+            text=score_text, font=('Arial', 14, 'bold'),
+            fill='white', tags='scoreboard'
+        )
+        # --- Timer Box (Black Background) ---
+        self.canvas.create_rectangle(
+            center_x + (score_box_width // 2 + timer_box_width),
+            top_y,
+            center_x + (score_box_width // 2 + timer_box_width + timer_box_width),
+            top_y + box_height,
+            fill='black', outline='', tags='scoreboard'
+        )
+
+        # --- Timer text ("45:00") ---
+        minutes = self.elapsed_time // 60
+        seconds = self.elapsed_time % 60
+        time_text = f"{minutes:02}:{seconds:02}"
+        self.canvas.create_text(
+            center_x + (score_box_width // 2 + box_width + timer_box_width // 2),
+            top_y + box_height // 2,
+            text=time_text, font=('Arial', 12, 'bold'),
+            fill='white', tags='scoreboard'
+        )
+
     def add_agent(self, agent):
         self.agents.append(agent)
 
     def add_passive_object(self, obj):
         self.passive_objects.append(obj)
+
+    def _reset_agents(self):
+        for bot in self.agents:
+            bot.reset()
 
     def assign_closest_percepts(self, team_bots, ball):
         def distance_to_ball(bot):
@@ -101,6 +182,7 @@ class FootballField:
 
     def update(self):
         self.canvas.delete('dynamic')
+        self.canvas.delete('scoreboard')
 
         ball = next((o for o in self.passive_objects if hasattr(o, 'is_ball') and o.is_ball), None)
 
@@ -120,6 +202,7 @@ class FootballField:
 
         self._check_collisions()
         self._check_goals()
+        self.draw_scoreboard()
 
     def _check_collisions(self):
         # --- Ball-bot collision detection ---
@@ -144,7 +227,7 @@ class FootballField:
 
         # --- Bot-bot collision detection ---
         num_bots = len(self.agents)
-        extra_gap = 50.0
+        extra_gap = 100.0
         for i in range(num_bots):
             for j in range(i + 1, num_bots):
                 bot1 = self.agents[i]
@@ -160,9 +243,9 @@ class FootballField:
 
                     # Push bots apart
                     overlap = min_dist - dist
-                    bot1.x -= nx * overlap / 2
+                    bot1.x -= nx * overlap / 4
                     bot1.y -= ny * overlap / 2
-                    bot2.x += nx * overlap / 2
+                    bot2.x += nx * overlap / 4
                     bot2.y += ny * overlap / 2
 
     def _check_goals(self):
@@ -175,15 +258,61 @@ class FootballField:
                     self.score['Blue'] += 1
                     print("Goal for Blue!", self.score)
                     obj.reset()
+                    self._reset_agents()
 
                 # Right goal (Red scores)
                 elif bx >= FIELD_WIDTH - 10 and (FIELD_HEIGHT - GOAL_WIDTH) // 2 <= by <= (FIELD_HEIGHT + GOAL_WIDTH) // 2:
                     self.score['Red'] += 1
                     print("Goal for Red!", self.score)
                     obj.reset()
+                    self._reset_agents()
+
+    def resume_game(self):
+        self.match_running = True
+
+    def pause_game(self):
+        self.match_running = False
+        # Optionally reset ball, freeze bots
+        print("Paused for half-time. Press a key to continue...")
+
+    def end_game(self):
+        self.match_running = False
+        print(f"Match ended! Final Score - Red: {self.score['Red']}, Blue: {self.score['Blue']}")
+        # Optionally show a "Full Time" banner
+
+    def prompt_resume_second_half(self):
+        response = tkinter.messagebox.askokcancel(
+            "Half Time",
+            "Half-Time!\nClick OK to start the second half."
+        )
+
+        if response:
+            self.resume_game()
 
     def run(self):
-        self.update()
+        if self.match_running:
+            self.update()
+
+        if not self.match_running:
+            return  # Stop ticking after match ends
+
+        self.elapsed_time += 1
+
+        # --- Half-time ---
+        if self.elapsed_time == 2701 and not self.half_time_reached:  # 45 * 60 = 2700 seconds
+            print("Half Time!")
+            self.half_time_reached = True
+            self.match_running = False
+            self.pause_game()
+            self.prompt_resume_second_half()
+
+        # --- Full-time ---
+        if self.elapsed_time == 5401 and not self.full_time_reached:  # 90 * 60 = 5400 seconds
+            print("Full Time!")
+            self.full_time_reached = True
+            self.match_running = False
+            self.end_game()
+
         self.root.after(50, self.run)
 
     def __init__(self, root):
@@ -194,5 +323,10 @@ class FootballField:
         self.agents = []
         self.passive_objects = []
         self.score = {'Red': 0, 'Blue': 0}
+        self.elapsed_time = 0
+
+        self.half_time_reached = False
+        self.full_time_reached = False
+        self.match_running = True
 
         self._draw_pitch()

@@ -61,7 +61,7 @@ class GoalkeeperBrain:
         goal_center_y = (goal_top + goal_bottom) // 2
 
         is_left_goalie = x < FIELD_WIDTH // 2
-        track_zone_x = 200  # Track/vision zone
+        track_zone_x = 300  # Track/vision zone
 
         # Determine if ball is in track zone
         if is_left_goalie:
@@ -76,7 +76,7 @@ class GoalkeeperBrain:
                 return 0.0, 0.0
             direction = 1 if dy > 0 else -1
             speed = min(6.0, max(2.0, abs(dy) / 10))
-            return direction * speed, direction * speed
+            return 0.0, direction * speed
 
         # If ball is outside the track zone, reposition to goal center
         dy = goal_center_y - y
@@ -84,7 +84,7 @@ class GoalkeeperBrain:
             return 0.0, 0.0  # Already at center or close enough
         direction = 1 if dy > 0 else -1
         speed = min(4.0, max(1.5, abs(dy) / 15))
-        return direction * speed, direction * speed
+        return 0.0, direction * speed
 
 
 class StrikerBrain:
@@ -171,7 +171,7 @@ class DefenderBrain:
                 self.base_x = 200
                 self.base_y = FIELD_HEIGHT // 4
             elif self.role == 'right_back':
-                self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
+                # self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
                 self.base_x = 200
                 self.base_y = 3 * FIELD_HEIGHT // 4
         else:
@@ -179,7 +179,7 @@ class DefenderBrain:
                 self.base_x = FIELD_WIDTH - 200
                 self.base_y = FIELD_HEIGHT // 4
             elif self.role == 'right_back':
-                self.x_min, self.x_max = FIELD_WIDTH // 2, 3 * FIELD_WIDTH // 4
+                # self.x_min, self.x_max = FIELD_WIDTH // 2, 3 * FIELD_WIDTH // 4
                 self.base_x = FIELD_WIDTH - 200
                 self.base_y = 3 * FIELD_HEIGHT // 4
 
@@ -194,18 +194,15 @@ class DefenderBrain:
         teammates = percepts.get('teammates', [])
 
         is_left_team = x < FIELD_WIDTH // 2
-        is_right_team = x > FIELD_WIDTH // 2
 
         if not self.initialized:
             self.setup(is_left_team)
 
         # 1. Calculate whether ball is inside defender's field of view (half field)
         if is_left_team:
-            should_track = ball_x <= FIELD_WIDTH // 2
-        elif is_right_team:
-            should_track = ball_x >= FIELD_WIDTH // 2
+            should_track = ball_x <= FIELD_WIDTH // 3
         else:
-            should_track = ball_x >= FIELD_WIDTH // 2
+            should_track = ball_x >= 2 * FIELD_WIDTH // 3
 
         dx, dy = 0.0, 0.0
 
@@ -248,7 +245,7 @@ class DefenderBrain:
 
 class MidfielderBrain:
     def __init__(self):
-        self.base_x = FIELD_WIDTH // 2
+        # self.base_x = FIELD_WIDTH // 2
         self.base_y = FIELD_HEIGHT // 2
 
     def think_and_act(self, percepts, x, y, sl, sr):
@@ -258,15 +255,22 @@ class MidfielderBrain:
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
 
-        # Midfielder track zone is middle third
-        track_zone_min_x = FIELD_WIDTH // 3
-        track_zone_max_x = 2 * FIELD_WIDTH // 3
+        is_left_team = x < FIELD_WIDTH // 2
 
-        should_track = track_zone_min_x <= ball_x <= track_zone_max_x
+        track_zone_x = 200  # Track/vision zone
+
+        # Determine if ball is in track zone
+        if is_left_team:
+            should_track = ball_x <= x + track_zone_x
+        else:
+            should_track = ball_x >= x - track_zone_x
 
         # If not tracking, return to base
         if not should_track:
-            return self._move_towards(x, y, self.base_x, self.base_y)
+            if is_left_team:
+                return self._move_towards(x, y, FIELD_WIDTH // 3, self.base_y)
+            else:
+                return self._move_towards(x, y, FIELD_WIDTH * 2 // 3, self.base_y)
 
         # Track vertically with ball
         dy = ball_y - y
@@ -278,7 +282,6 @@ class MidfielderBrain:
             return direction * speed, direction * speed
 
         # Push forward toward goal
-        is_left_team = x < FIELD_WIDTH // 2
         push_speed = 4.0 if is_left_team else -4.0
         return push_speed, push_speed
 

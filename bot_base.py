@@ -1,13 +1,15 @@
 import math
 import random
-
-FIELD_WIDTH = 1000
-FIELD_HEIGHT = 600
+from football_field import FIELD_MARGIN, FIELD_HEIGHT, FIELD_WIDTH
 
 class Bot:
     def __init__(self, x, y, team_color, brain):
         self.x = x
         self.y = y
+        self.dx = 0.0
+        self.dy = 0.0
+        self.start_x = x  # Remember initial starting position
+        self.start_y = y
         self.radius = 20
         self.theta = -math.pi / 2  # Not used in vertical-only mode
         self.speed_left = 0.0
@@ -18,10 +20,11 @@ class Bot:
 
     def update(self, canvas, agents, objects):
         percepts = self.sense(objects)
-        self.speed_left, self.speed_right = self.brain.think_and_act(
+        self.dx, self.dy = self.brain.think_and_act(
             percepts, self.x, self.y, self.speed_left, self.speed_right
         )
         self.move()
+
         canvas.create_oval(
             self.x - self.radius, self.y - self.radius,
             self.x + self.radius, self.y + self.radius,
@@ -47,10 +50,13 @@ class Bot:
         return {}
 
     def move(self):
-        # Vertical-only movement
-        avg_speed = (self.speed_left + self.speed_right) / 2.0
-        self.y += avg_speed
-        self.y = max(self.radius, min(FIELD_HEIGHT - self.radius, self.y))
+        # Move both horizontally and vertically
+        self.x += self.dx
+        self.y += self.dy
+
+        # Clamp inside field boundaries
+        self.x = max(self.radius + FIELD_MARGIN, min(FIELD_WIDTH - self.radius - FIELD_MARGIN, self.x))
+        self.y = max(self.radius + FIELD_MARGIN, min(FIELD_HEIGHT - self.radius - FIELD_MARGIN, self.y))
 
     def _normalize_angle(self, angle):
         while angle < -math.pi:
@@ -58,3 +64,9 @@ class Bot:
         while angle > math.pi:
             angle -= 2 * math.pi
         return angle
+
+    def reset(self):
+        self.x = self.start_x
+        self.y = self.start_y
+        self.speed_left = 0.0
+        self.speed_right = 0.0
