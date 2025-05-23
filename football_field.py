@@ -361,6 +361,18 @@ class FootballField:
                     self.stats['Blue']['shots_on_target'] += 1
                     self.last_shot_time = self.elapsed_time
                     print("Blue shot on target!")
+                    
+                    # Visual feedback for Blue's shot
+                    goal_center_x = 0  # Left goal
+                    goal_center_y = FIELD_HEIGHT // 2
+                    self.canvas.create_line(
+                        ball.x, ball.y,
+                        goal_center_x, goal_center_y,
+                        fill='purple',
+                        width=2,
+                        dash=(4, 4),
+                        tags='dynamic'
+                    )
 
         # --- Red attacking Blue's goal (RIGHT) ---
         elif self.last_touch_team == 'Red':
@@ -370,6 +382,18 @@ class FootballField:
                     self.stats['Red']['shots_on_target'] += 1
                     self.last_shot_time = self.elapsed_time
                     print("Red shot on target!")
+                    
+                    # Visual feedback for Red's shot
+                    goal_center_x = FIELD_WIDTH  # Right goal
+                    goal_center_y = FIELD_HEIGHT // 2
+                    self.canvas.create_line(
+                        ball.x, ball.y,
+                        goal_center_x, goal_center_y,
+                        fill='purple',
+                        width=2,
+                        dash=(4, 4),
+                        tags='dynamic'
+                    )
 
     def resume_game(self):
         self.match_running = True
