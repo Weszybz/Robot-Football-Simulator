@@ -1,5 +1,6 @@
 import tkinter as tk
 import time
+import pandas as pd
 from football_field import FootballField
 from bot_base import Bot
 from ball import Ball
@@ -48,9 +49,36 @@ class ExperimentRunner:
         field.add_agent(red_bot)
         field.add_agent(blue_bot)
 
+        # Tracking simulation stats
+        contacts = 0
+        reaction_times = []
+        alignment_errors = []
+        shots_on_target = 0
+        saves = 0
+        misses = 0
+        seen_ball = False
+        reacted = False
+        track_start = 0
+
         end_time = time.time() + self.match_duration
 
         def loop():
+            nonlocal contacts, reaction_times, alignment_errors, shots_on_target, saves, misses
+            nonlocal seen_ball, reacted, track_start
+
+            # Check ball proximity to red_bot
+            percepts = red_bot.sense(field.passive_objects)
+            if percepts:
+                distance = percepts['distance_to_ball']
+                alignment_errors.append(abs(percepts['ball_y'] - red_bot.y))
+
+                if not seen_ball:
+                    seen_ball = True
+                    track_start = time.time()
+                elif not reacted and abs(red_bot.speed_left) > 0:
+                    reaction_times.append(time.time() - track_start)
+                    reacted = True
+
             if time.time() < end_time:
                 field.update()
                 score_text = f"Red: {field.score['Red']}  |  Blue: {field.score['Blue']}"
@@ -61,7 +89,20 @@ class ExperimentRunner:
 
         root.after(50, loop)
         root.mainloop()
-        return field.score
+
+        avg_reaction = sum(reaction_times) / len(reaction_times) if reaction_times else 0
+        avg_alignment = sum(alignment_errors) / len(alignment_errors) if alignment_errors else 0
+
+        stats = {
+            'ball_contacts': contacts,
+            'avg_reaction': avg_reaction,
+            'avg_alignment_error': avg_alignment,
+            'shots_on_target': shots_on_target,
+            'saves': saves,
+            'misses': misses
+        }
+
+        return field.score, stats
 
     def _print_summary(self):
         print("\nSummary of Results:")
