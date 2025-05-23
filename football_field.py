@@ -191,34 +191,47 @@ class FootballField:
             distance = ((closest_bot.x - ball.x) ** 2 + (closest_bot.y - ball.y) ** 2) ** 0.5
 
             if closest_bot:
-                self.possession_team = closest_bot.team  # "Red" or "Blue"
+                self.possession_team = closest_bot.team
 
                 if distance <= (closest_bot.radius + ball.radius + 10):  # close enough
+                    # Store previous touch info
+                    prev_touch_team = self.last_touch_team
+                    prev_touch_bot = self.last_touch_bot_id
+                    prev_touch_time = self.last_touch_time
+                    prev_touch_pos = self.last_touch_pos
 
-                    # --- Store previous touch info ---
-                    prev_touch_team = getattr(self, 'last_touch_team', None)
-                    prev_touch_bot = getattr(self, 'last_touch_bot_id', None)
-                    prev_touch_time = getattr(self, 'last_touch_time', -9999)
+                    # Pass detection logic
+                    if prev_touch_team == closest_bot.team and prev_touch_bot != closest_bot:
+                        time_since_last_touch = self.elapsed_time - prev_touch_time
+                        
+                        if time_since_last_touch <= self.pass_window:
+                            # Calculate pass distance
+                            if prev_touch_pos:
+                                pass_distance = ((closest_bot.x - prev_touch_pos[0]) ** 2 + 
+                                               (closest_bot.y - prev_touch_pos[1]) ** 2) ** 0.5
+                                
+                                # Check if it's a valid pass
+                                if pass_distance >= self.min_pass_distance:
+                                    self.stats[closest_bot.team]['passes_completed'] += 1
+                                    print(f"Pass completed by {closest_bot.team} from bot {prev_touch_bot} to {closest_bot}!")
+                                    
+                                    # Visual feedback for completed pass
+                                    self.canvas.create_line(
+                                        prev_touch_pos[0], prev_touch_pos[1],
+                                        closest_bot.x, closest_bot.y,
+                                        fill='yellow', width=2, dash=(4, 4),
+                                        tags='dynamic'
+                                    )
 
-                    # --- Pass detection ---
-                    if (prev_touch_team == closest_bot.team and
-                            prev_touch_bot != closest_bot and
-                            self.elapsed_time - prev_touch_time <= self.pass_window):
-                        self.stats[closest_bot.team]['passes_completed'] += 1
-                        print(f"Pass completed by {closest_bot.team} from bot {prev_touch_bot} to {closest_bot}!")
-
-                    # --- Tackle detection ---
-                    if (prev_touch_team is not None and
-                            prev_touch_team != closest_bot.team and
-                            prev_touch_bot != closest_bot and
-                            self.elapsed_time - prev_touch_time <= 20):  # ~1s
-                        self.stats[closest_bot.team]['tackles'] += 1
-                        print(f"{closest_bot.team} made a TACKLE on {prev_touch_team}!")
-
-                    # --- Update last touch info ---
+                    # Update last touch info
                     self.last_touch_team = closest_bot.team
                     self.last_touch_bot_id = closest_bot
                     self.last_touch_time = self.elapsed_time
+                    self.last_touch_pos = (closest_bot.x, closest_bot.y)
+
+                    # If this is a new touch by a different bot, count as pass attempt
+                    if prev_touch_bot != closest_bot and prev_touch_team == closest_bot.team:
+                        self.stats[closest_bot.team]['passes_attempted'] += 1
 
             red_team = [bot for bot in self.agents if bot.team == 'Red']
             blue_team = [bot for bot in self.agents if bot.team == 'Blue']
@@ -236,6 +249,13 @@ class FootballField:
         self._check_goals()
         self.check_shot_on_target()
         self.draw_scoreboard()
+
+        # Update scoreboard with pass completion stats
+        self.canvas.create_text(
+            200, 30,
+            text=f"Passes (Completed/Attempted): Red {self.stats['Red']['passes_completed']}/{self.stats['Red']['passes_attempted']} | Blue {self.stats['Blue']['passes_completed']}/{self.stats['Blue']['passes_attempted']}",
+            fill='white', font=('Arial', 12), tags='scoreboard'
+        )
 
     def _check_collisions(self):
         # --- Ball-bot collision detection ---
@@ -409,7 +429,7 @@ class FootballField:
             ("Goals Conceded", 'goals_conceded'),
             ("Shots on Target", 'shots_on_target'),
             ("Saves", 'saves'),
-            # ("Passes Completed", 'passes_completed'),
+            ("Passes (Completed/Attempted)", 'passes'),
             ("Possession (%)", None),
             ("Tackles", 'tackles'),
         ]
@@ -418,7 +438,10 @@ class FootballField:
             tk.Label(stats_frame, text=label_text, font=("Arial", 12), fg="white", bg="navy", width=20,
                      anchor='w').grid(row=i, column=0, sticky='w')
 
-            if stat_key is not None:
+            if stat_key == 'passes':
+                red_value = f"{self.stats['Red']['passes_completed']}/{self.stats['Red']['passes_attempted']}"
+                blue_value = f"{self.stats['Blue']['passes_completed']}/{self.stats['Blue']['passes_attempted']}"
+            elif stat_key is not None:
                 red_value = self.stats['Red'][stat_key]
                 blue_value = self.stats['Blue'][stat_key]
             else:
@@ -429,13 +452,6 @@ class FootballField:
                                                                                                                column=1)
             tk.Label(stats_frame, text=str(blue_value), font=("Arial", 12), fg="blue", bg="navy", width=10).grid(row=i,
                                                                                                                  column=2)
-
-            # Show live pass count for debugging
-            self.canvas.create_text(
-                200, 50,
-                text=f"Passes: R {self.stats['Red']['passes_completed']} | B {self.stats['Blue']['passes_completed']}",
-                fill='white', font=('Arial', 12), tags='scoreboard'
-            )
 
         # --- Resume Button ---
         resume_button = tk.Button(
@@ -491,7 +507,7 @@ class FootballField:
             ("Goals Conceded", 'goals_conceded'),
             ("Shots on Target", 'shots_on_target'),
             ("Saves", 'saves'),
-            # ("Passes Completed", 'passes_completed'),
+            ("Passes (Completed/Attempted)", 'passes'),
             ("Possession (%)", None),
             ("Tackles", 'tackles'),
         ]
@@ -500,7 +516,10 @@ class FootballField:
             tk.Label(stats_frame, text=label_text, font=("Arial", 12), fg="white", bg="navy", width=20,
                      anchor='w').grid(row=i, column=0)
 
-            if stat_key is not None:
+            if stat_key == 'passes':
+                red_value = f"{self.stats['Red']['passes_completed']}/{self.stats['Red']['passes_attempted']}"
+                blue_value = f"{self.stats['Blue']['passes_completed']}/{self.stats['Blue']['passes_attempted']}"
+            elif stat_key is not None:
                 red_value = self.stats['Red'][stat_key]
                 blue_value = self.stats['Blue'][stat_key]
             else:
@@ -568,11 +587,16 @@ class FootballField:
 
         self.last_shot_team = None
         self.last_shot_time = -4  # Some time far in the past
-        self.last_pass_bot = None
-        self.last_pass_team = None
-        self.last_pass_time = -4
-        self.pass_window = 1
-        self.shot_cooldown = 20  # Frames to wait before counting another shot (~1s if 60fps)
+        self.shot_cooldown = 20  # Add this line to fix the crash
+        
+        # Pass detection variables
+        self.pass_window = 60  # Increased to 60 frames (about 1 second)
+        self.min_pass_distance = 50  # Minimum distance for a pass to be counted
+        self.last_touch_team = None
+        self.last_touch_bot_id = None
+        self.last_touch_time = -4
+        self.last_touch_pos = None  # Store position of last touch
+        self.potential_pass_in_progress = False
 
         self.stats = {
             'Red': {
@@ -582,7 +606,8 @@ class FootballField:
                 'saves': 0,
                 'possession_time': 0,
                 'tackles': 0,
-                'passes_completed': 0  # <-- ADD THIS
+                'passes_completed': 0,
+                'passes_attempted': 0
             },
             'Blue': {
                 'goals_scored': 0,
@@ -591,7 +616,8 @@ class FootballField:
                 'saves': 0,
                 'possession_time': 0,
                 'tackles': 0,
-                'passes_completed': 0  # <-- ADD THIS
+                'passes_completed': 0,
+                'passes_attempted': 0
             }
         }
 
