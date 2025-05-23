@@ -3,7 +3,7 @@ import random
 from football_field import FIELD_MARGIN, FIELD_HEIGHT, FIELD_WIDTH
 
 class Bot:
-    def __init__(self, x, y, team_color, brain):
+    def __init__(self, x, y, team_color, position_brain, perception_brain):
         self.x = x
         self.y = y
         self.dx = 0.0
@@ -15,12 +15,13 @@ class Bot:
         self.speed_left = 0.0
         self.speed_right = 0.0
         self.team = team_color
-        self.brain = brain
+        self.position_brain = position_brain
+        self.perception_brain = perception_brain
         self.color = 'red' if team_color == 'Red' else 'blue'
 
     def update(self, canvas, agents, objects):
-        percepts = self.sense(objects)
-        self.dx, self.dy = self.brain.think_and_act(
+        percepts = self.perception_brain.sense(self, agents, objects)
+        self.dx, self.dy = self.position_brain.think_and_act(
             percepts, self.x, self.y, self.speed_left, self.speed_right
         )
         self.move()
@@ -45,7 +46,12 @@ class Bot:
                 'ball_x': ball.x,
                 'ball_y': ball.y,
                 'ball_dx': ball.dx,
-                'ball_dy': ball.dy
+                'ball_dy': ball.dy,
+                'is_closest': False,  # You might update this externally
+                'ball_visible': True,  # Assuming default for now
+                'last_seen_ball': None,  # Only MemoryPerception fills this
+                'shared_blackboard': {},  # Only BlackboardPerception uses this
+                'ball_from_teammate': False
             }
         return {}
 

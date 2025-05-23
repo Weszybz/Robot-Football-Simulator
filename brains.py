@@ -50,6 +50,9 @@ class RandomWanderBrain:
 class GoalkeeperBrain:
     """ Camps inside goal area and starts tracking the ball once it's within 100px in front of the goal."""
     #TODO: Goalkeeper needs to reposition back to middle of goal when the ball is within it's vision (18-yard box).
+    def __init__(self, perception_type=None):
+        self.perception_type = perception_type
+
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
@@ -94,6 +97,9 @@ class StrikerBrain:
     - Gets behind the ball
     - When close, "kicks" ball toward goal by positioning
     """
+
+    def __init__(self, perception_type=None):
+        self.perception_type = perception_type
 
     # TODO: Striker needs to be aim at the goal everytime.
     def think_and_act(self, percepts, x, y, sl, sr):
@@ -161,9 +167,10 @@ class StrikerBrain:
 
 
 class DefenderBrain:
-    def __init__(self, role='left_back'):
+    def __init__(self, role='left_back', perception_type=None):
         self.role = role
         self.initialized = False
+        self.perception_type = perception_type
 
     def setup(self, is_left_team):
         if is_left_team:
@@ -244,9 +251,10 @@ class DefenderBrain:
 
 
 class MidfielderBrain:
-    def __init__(self):
+    def __init__(self, perception_type=None):
         # self.base_x = FIELD_WIDTH // 2
         self.base_y = FIELD_HEIGHT // 2
+        self.perception_type = perception_type
 
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
@@ -301,6 +309,9 @@ class FieldAwareBrain:
     - Aggressive in attacking half
     - Conservative in defensive half
     """
+    def __init__(self, perception_type=None):
+        self.perception_type = perception_type
+
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0

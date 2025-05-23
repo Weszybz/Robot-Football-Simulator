@@ -511,6 +511,18 @@ class FootballField:
                                                                                                                 column=1)
             tk.Label(stats_frame, text=str(blue_value), font=("Arial", 12), fg="blue", bg="navy", width=10).grid(row=i,
                                                                                                                   column=2)
+        # --- Exit Button ---
+        exit_button = tk.Button(
+            self.full_time_window,
+            text="Exit Game",
+            font=("Arial", 14, "bold"),
+            bg="white",
+            fg="black",
+            command=self.root.quit  # Closes the whole app
+        )
+        exit_button.pack(pady=20)
+
+
     def _start_second_half(self):
         self.half_time_window.destroy()  # Close the halftime popup
         self.resume_game()  # Resume the match
@@ -538,7 +550,7 @@ class FootballField:
             self.end_game()
             self.prompt_show_full_time_stats()
 
-        self.root.after(5, self.run)
+        self.root.after(60, self.run) #5 is the fast one
 
     def __init__(self, root):
         self.root = root

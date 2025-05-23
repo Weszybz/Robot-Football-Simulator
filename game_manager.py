@@ -3,6 +3,7 @@ from football_field import FootballField
 from bot_base import Bot
 from ball import Ball
 from brains import ReactiveBrain, RandomWanderBrain, ChargeAtBallBrain, GoalkeeperBrain, StrikerBrain, DefenderBrain, MidfielderBrain
+from perception import FOVPerception, MemoryPerception, BlackboardPerception, SubsumptionPerception
 
 
 def create_game():
@@ -17,21 +18,21 @@ def create_game():
 
     # Create bots with different brains
     red_team = [
-        Bot(x=50, y=FIELD_HEIGHT // 2, team_color='Red', brain=GoalkeeperBrain()),
-        Bot(x=200, y=FIELD_HEIGHT // 4, team_color='Red', brain=DefenderBrain(role='left_back')),
-        Bot(x=200, y=3 * FIELD_HEIGHT // 4, team_color='Red', brain=DefenderBrain(role='right_back')),
-        Bot(x=FIELD_WIDTH // 3, y=FIELD_HEIGHT // 2, team_color='Red', brain=MidfielderBrain()),
-        Bot(x=FIELD_WIDTH // 2 - 50, y=FIELD_HEIGHT // 2, team_color='Red', brain=StrikerBrain()),
+        Bot(x=50, y=FIELD_HEIGHT // 2, team_color='Red', position_brain=GoalkeeperBrain(), perception_brain=SubsumptionPerception()),
+        Bot(x=200, y=FIELD_HEIGHT // 4, team_color='Red', position_brain=DefenderBrain(role='left_back'), perception_brain=SubsumptionPerception()),
+        Bot(x=200, y=3 * FIELD_HEIGHT // 4, team_color='Red', position_brain=DefenderBrain(role='right_back'), perception_brain=SubsumptionPerception()),
+        Bot(x=FIELD_WIDTH // 3, y=FIELD_HEIGHT // 2, team_color='Red', position_brain=MidfielderBrain(), perception_brain=SubsumptionPerception()),
+        Bot(x=FIELD_WIDTH // 2 - 50, y=FIELD_HEIGHT // 2, team_color='Red', position_brain=StrikerBrain(), perception_brain=SubsumptionPerception()),
     ]
     for bot in red_team:
         field.add_agent(bot)
 
     blue_team = [
-        Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=GoalkeeperBrain()),
-        Bot(x=FIELD_WIDTH - 200, y=FIELD_HEIGHT // 4, team_color='Blue', brain=DefenderBrain(role='left_back')),
-        Bot(x=FIELD_WIDTH - 200, y=3 * FIELD_HEIGHT // 4, team_color='Blue', brain=DefenderBrain(role='right_back')),
-        Bot(x=FIELD_WIDTH * 2 // 3, y=FIELD_HEIGHT // 2, team_color='Blue', brain=MidfielderBrain()),
-        Bot(x=FIELD_WIDTH // 2 + 50, y=FIELD_HEIGHT // 2, team_color='Blue', brain=StrikerBrain()),
+        Bot(x=FIELD_WIDTH - 50, y=FIELD_HEIGHT // 2, team_color='Blue', position_brain=GoalkeeperBrain(), perception_brain=MemoryPerception()),
+        Bot(x=FIELD_WIDTH - 200, y=FIELD_HEIGHT // 4, team_color='Blue', position_brain=DefenderBrain(role='left_back'), perception_brain=MemoryPerception()),
+        Bot(x=FIELD_WIDTH - 200, y=3 * FIELD_HEIGHT // 4, team_color='Blue', position_brain=DefenderBrain(role='right_back'), perception_brain=MemoryPerception()),
+        Bot(x=FIELD_WIDTH * 2 // 3, y=FIELD_HEIGHT // 2, team_color='Blue', position_brain=MidfielderBrain(), perception_brain=MemoryPerception()),
+        Bot(x=FIELD_WIDTH // 2 + 50, y=FIELD_HEIGHT // 2, team_color='Blue', position_brain=StrikerBrain(), perception_brain=MemoryPerception())
     ]
     for bot in blue_team:
         field.add_agent(bot)
