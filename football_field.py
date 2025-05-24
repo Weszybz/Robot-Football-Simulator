@@ -175,7 +175,8 @@ class FootballField:
         for bot in team_bots:
             bot.external_percepts = {
                 'is_closest': (bot == closest_bot),
-                'teammates': [(mate.x, mate.y) for mate in team_bots if mate != bot]
+                'teammates': [(mate.x, mate.y) for mate in team_bots if mate != bot],
+                'elapsed_time': self.elapsed_time  # Add elapsed time to percepts
             }
 
     def update(self):
@@ -190,6 +191,21 @@ class FootballField:
 
             if closest_bot:
                 self.possession_team = closest_bot.team
+
+                # Draw any shooting lines from percepts
+                if hasattr(closest_bot, 'external_percepts'):
+                    shooting_lines = closest_bot.external_percepts.get('shooting_lines', [])
+                    for line in shooting_lines:
+                        start_x, start_y = line['start']
+                        end_x, end_y = line['end']
+                        self.canvas.create_line(
+                            start_x, start_y,
+                            end_x, end_y,
+                            fill=line['color'],
+                            width=2,
+                            dash=(4, 4),
+                            tags='dynamic'
+                        )
 
                 if distance <= (closest_bot.radius + ball.radius + 10):  # close enough
                     # Store previous touch info
@@ -242,11 +258,15 @@ class FootballField:
                         else:
                             self.initial_contact_angle = math.atan2(closest_bot.y - ball.y, closest_bot.x - ball.x)
                         
-                        # Find nearest teammate and their angle
-                        teammate_info = self.find_nearest_teammate(closest_bot)
-                        if teammate_info:
-                            self.target_teammate, target_angle = teammate_info
-                            # Determine optimal rotation direction
+                        # Find nearest teammates and their angles
+                        teammate_options = self.find_nearest_teammate(closest_bot)
+                        if teammate_options:
+                            # Use the first option as primary target
+                            self.target_teammate, target_angle = teammate_options[0]
+                            # Store second option if available
+                            self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
+                            
+                            # Determine optimal rotation direction for primary target
                             self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
                                 self.initial_contact_angle, target_angle
                             )
@@ -257,6 +277,7 @@ class FootballField:
                                 self.initial_contact_angle, default_angle
                             )
                             self.target_teammate = None
+                            self.second_target = None
                         
                         self.ball_distance = distance
                         self.stored_ball_speed = (ball.dx, ball.dy)
@@ -282,41 +303,6 @@ class FootballField:
                     if self.ball_possessing_bot == closest_bot:
                         possession_time = self.elapsed_time - self.possession_start_time
                         
-                        # Update target angle continuously based on teammate movement
-                        if self.target_teammate:
-                            new_dx = self.target_teammate.x - closest_bot.x
-                            new_dy = self.target_teammate.y - closest_bot.y
-                            new_dist = math.hypot(new_dx, new_dy)
-                            
-                            # Check if current target is still valid
-                            MAX_PASS_DISTANCE = 600
-                            if new_dist > MAX_PASS_DISTANCE:
-                                # Try to find a new target
-                                teammate_info = self.find_nearest_teammate(closest_bot)
-                                if teammate_info:
-                                    # Only update target if we find a significantly better option
-                                    new_teammate, new_angle = teammate_info
-                                    if new_teammate != self.target_teammate:
-                                        # Calculate scores for current and new target
-                                        current_score = self.calculate_teammate_score(closest_bot, self.target_teammate)
-                                        new_score = self.calculate_teammate_score(closest_bot, new_teammate)
-                                        
-                                        # Only switch if new target is significantly better (20% improvement)
-                                        if new_score > current_score * 1.2:
-                                            self.target_teammate = new_teammate
-                                            self.target_release_angle = new_angle
-                                            # Reset rotation direction for new target
-                                            _, self.rotate_clockwise = self.get_shortest_rotation(
-                                                self.initial_contact_angle, new_angle
-                                            )
-                            else:
-                                # Update angle to current target
-                                new_target_angle = math.atan2(new_dy, new_dx)
-                                # Update target angle with optimal rotation
-                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                    self.initial_contact_angle, new_target_angle
-                                )
-                        
                         if possession_time < self.possession_duration:
                             # Calculate interpolation factor (0 to 1)
                             t = possession_time / self.possession_duration
@@ -336,11 +322,18 @@ class FootballField:
                             ball.x = closest_bot.x + math.cos(current_angle) * self.ball_distance
                             ball.y = closest_bot.y + math.sin(current_angle) * self.ball_distance
                             
-                            # Draw line only to current target
+                            # Draw lines to both potential targets
                             if self.target_teammate:
                                 self.canvas.create_line(
                                     closest_bot.x, closest_bot.y,
                                     self.target_teammate.x, self.target_teammate.y,
+                                    fill='yellow', width=1, dash=(4, 4),
+                                    tags='dynamic'
+                                )
+                            if self.second_target:
+                                self.canvas.create_line(
+                                    closest_bot.x, closest_bot.y,
+                                    self.second_target[0].x, self.second_target[0].y,
                                     fill='yellow', width=1, dash=(4, 4),
                                     tags='dynamic'
                                 )
@@ -368,6 +361,7 @@ class FootballField:
                             self.ball_possessing_bot = None
                             self.possession_start_time = -1
                             self.target_teammate = None
+                            self.second_target = None
                     
                     # If different bot touches the ball, transfer possession
                     elif self.ball_possessing_bot != closest_bot:
@@ -380,11 +374,15 @@ class FootballField:
                         else:
                             self.initial_contact_angle = math.atan2(closest_bot.y - ball.y, closest_bot.x - ball.x)
                         
-                        # Find nearest teammate and their angle
-                        teammate_info = self.find_nearest_teammate(closest_bot)
-                        if teammate_info:
-                            self.target_teammate, target_angle = teammate_info
-                            # Determine optimal rotation direction
+                        # Find nearest teammates and their angles
+                        teammate_options = self.find_nearest_teammate(closest_bot)
+                        if teammate_options:
+                            # Use the first option as primary target
+                            self.target_teammate, target_angle = teammate_options[0]
+                            # Store second option if available
+                            self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
+                            
+                            # Determine optimal rotation direction for primary target
                             self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
                                 self.initial_contact_angle, target_angle
                             )
@@ -395,6 +393,7 @@ class FootballField:
                                 self.initial_contact_angle, default_angle
                             )
                             self.target_teammate = None
+                            self.second_target = None
                         
                         self.ball_distance = distance
                         self.stored_ball_speed = (ball.dx, ball.dy)
@@ -463,7 +462,7 @@ class FootballField:
         return max(0.0, min(1.0, progress + 0.5))  # Normalize to 0-1 range
 
     def find_nearest_teammate(self, bot):
-        """Find the best teammate to pass to based on multiple factors."""
+        """Find the best teammates to pass to based on multiple factors."""
         teammates = [agent for agent in self.agents if agent.team == bot.team and agent != bot]
         if not teammates:
             return None
@@ -526,9 +525,28 @@ class FootballField:
         if not teammate_scores:
             return None
             
-        # Sort by score and return the best option
+        # Sort by score and return the top two options
         teammate_scores.sort(reverse=True, key=lambda x: x[0])
-        return teammate_scores[0][1], teammate_scores[0][2]
+        
+        # Get the two best options that are sufficiently different from each other
+        best_options = []
+        if teammate_scores:
+            best_options.append((teammate_scores[0][1], teammate_scores[0][2]))  # First best option
+            
+            # Look for a second option that's different enough from the first
+            for score, teammate, angle in teammate_scores[1:]:
+                first_teammate = best_options[0][0]
+                # Check if this teammate is in a significantly different position
+                dx = teammate.x - first_teammate.x
+                dy = teammate.y - first_teammate.y
+                dist_between = math.hypot(dx, dy)
+                
+                # Only add as second option if teammates are far enough apart
+                if dist_between > 100:  # Minimum distance between passing options
+                    best_options.append((teammate, angle))
+                    break
+        
+        return best_options if best_options else None
 
     def calculate_space_score(self, teammate):
         """Calculate how much space a teammate has (not marked by opponents)."""
@@ -619,11 +637,15 @@ class FootballField:
                         else:
                             self.initial_contact_angle = math.atan2(dy, dx)
                         
-                        # Find nearest teammate and their angle
-                        teammate_info = self.find_nearest_teammate(bot)
-                        if teammate_info:
-                            self.target_teammate, target_angle = teammate_info
-                            # Determine optimal rotation direction
+                        # Find nearest teammates and their angles
+                        teammate_options = self.find_nearest_teammate(bot)
+                        if teammate_options:
+                            # Use the first option as primary target
+                            self.target_teammate, target_angle = teammate_options[0]
+                            # Store second option if available
+                            self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
+                            
+                            # Determine optimal rotation direction for primary target
                             self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
                                 self.initial_contact_angle, target_angle
                             )
@@ -634,6 +656,7 @@ class FootballField:
                                 self.initial_contact_angle, default_angle
                             )
                             self.target_teammate = None
+                            self.second_target = None
                         
                         self.ball_distance = min_dist
                         self.stored_ball_speed = (ball.dx, ball.dy)
@@ -659,41 +682,6 @@ class FootballField:
                     if self.ball_possessing_bot == bot:
                         possession_time = self.elapsed_time - self.possession_start_time
                         
-                        # Update target angle continuously based on teammate movement
-                        if self.target_teammate:
-                            new_dx = self.target_teammate.x - bot.x
-                            new_dy = self.target_teammate.y - bot.y
-                            new_dist = math.hypot(new_dx, new_dy)
-                            
-                            # Check if current target is still valid
-                            MAX_PASS_DISTANCE = 600
-                            if new_dist > MAX_PASS_DISTANCE:
-                                # Try to find a new target
-                                teammate_info = self.find_nearest_teammate(bot)
-                                if teammate_info:
-                                    # Only update target if we find a significantly better option
-                                    new_teammate, new_angle = teammate_info
-                                    if new_teammate != self.target_teammate:
-                                        # Calculate scores for current and new target
-                                        current_score = self.calculate_teammate_score(bot, self.target_teammate)
-                                        new_score = self.calculate_teammate_score(bot, new_teammate)
-                                        
-                                        # Only switch if new target is significantly better (20% improvement)
-                                        if new_score > current_score * 1.2:
-                                            self.target_teammate = new_teammate
-                                            self.target_release_angle = new_angle
-                                            # Reset rotation direction for new target
-                                            _, self.rotate_clockwise = self.get_shortest_rotation(
-                                                self.initial_contact_angle, new_angle
-                                            )
-                            else:
-                                # Update angle to current target
-                                new_target_angle = math.atan2(new_dy, new_dx)
-                                # Update target angle with optimal rotation
-                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                    self.initial_contact_angle, new_target_angle
-                                )
-                        
                         if possession_time < self.possession_duration:
                             # Calculate interpolation factor (0 to 1)
                             t = possession_time / self.possession_duration
@@ -713,11 +701,18 @@ class FootballField:
                             ball.x = bot.x + math.cos(current_angle) * self.ball_distance
                             ball.y = bot.y + math.sin(current_angle) * self.ball_distance
                             
-                            # Draw line only to current target
+                            # Draw lines to both potential targets
                             if self.target_teammate:
                                 self.canvas.create_line(
                                     bot.x, bot.y,
                                     self.target_teammate.x, self.target_teammate.y,
+                                    fill='yellow', width=1, dash=(4, 4),
+                                    tags='dynamic'
+                                )
+                            if self.second_target:
+                                self.canvas.create_line(
+                                    bot.x, bot.y,
+                                    self.second_target[0].x, self.second_target[0].y,
                                     fill='yellow', width=1, dash=(4, 4),
                                     tags='dynamic'
                                 )
@@ -745,6 +740,7 @@ class FootballField:
                             self.ball_possessing_bot = None
                             self.possession_start_time = -1
                             self.target_teammate = None
+                            self.second_target = None
                     
                     # If different bot touches the ball, transfer possession
                     elif self.ball_possessing_bot != bot:
@@ -757,11 +753,15 @@ class FootballField:
                         else:
                             self.initial_contact_angle = math.atan2(dy, dx)
                         
-                        # Find nearest teammate and their angle
-                        teammate_info = self.find_nearest_teammate(bot)
-                        if teammate_info:
-                            self.target_teammate, target_angle = teammate_info
-                            # Determine optimal rotation direction
+                        # Find nearest teammates and their angles
+                        teammate_options = self.find_nearest_teammate(bot)
+                        if teammate_options:
+                            # Use the first option as primary target
+                            self.target_teammate, target_angle = teammate_options[0]
+                            # Store second option if available
+                            self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
+                            
+                            # Determine optimal rotation direction for primary target
                             self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
                                 self.initial_contact_angle, target_angle
                             )
@@ -772,6 +772,7 @@ class FootballField:
                                 self.initial_contact_angle, default_angle
                             )
                             self.target_teammate = None
+                            self.second_target = None
                         
                         self.ball_distance = min_dist
                         self.stored_ball_speed = (ball.dx, ball.dy)
@@ -1129,6 +1130,7 @@ class FootballField:
         self.ball_distance = 0
         self.stored_ball_speed = (0, 0)
         self.target_teammate = None
+        self.second_target = None
         self.possession_buffer = 15  # Added buffer for more stable possession
         
         # Pass detection variables

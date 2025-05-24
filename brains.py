@@ -95,13 +95,54 @@ class StrikerBrain:
     Smart offensive AI:
     - Moves vertically to align with ball
     - Gets behind the ball
-    - When close, "kicks" ball toward goal by positioning
+    - When in shooting position, takes a shot at goal
+    - Otherwise, maintains possession and looks for passes
     """
 
     def __init__(self, perception_type=None):
         self.perception_type = perception_type
+        self.last_shot_time = -100  # Cooldown tracking
+        self.shot_cooldown = 30     # Frames between shot attempts
 
-    # TODO: Striker needs to be aim at the goal everytime.
+    def should_shoot(self, x, y, ball_x, ball_y, is_left_team, is_closest):
+        """Determine if striker should take a shot based on position and situation."""
+        # Basic position check (in opposing half)
+        in_opposing_half = (is_left_team and x > FIELD_WIDTH // 2) or (not is_left_team and x < FIELD_WIDTH // 2)
+        if not in_opposing_half:
+            return False
+
+        # Distance to goal
+        goal_x = FIELD_WIDTH if is_left_team else 0
+        distance_to_goal = abs(goal_x - x)
+        
+        # Don't shoot from too far
+        if distance_to_goal > FIELD_WIDTH // 2:
+            return False
+
+        # Must be close to ball to shoot
+        if abs(ball_x - x) > 25 or abs(ball_y - y) > 25:
+            return False
+
+        # Must be closest to ball
+        if not is_closest:
+            return False
+
+        # Check if in good vertical position relative to goal
+        goal_top = (FIELD_HEIGHT - GOAL_WIDTH) // 2
+        goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
+        good_vertical_position = goal_top - 100 <= y <= goal_bottom + 100  # Added 100-unit buffer
+
+        return good_vertical_position
+
+    def calculate_shot_power(self, distance_to_goal):
+        """Calculate shot power based on distance to goal."""
+        MIN_POWER = 8.0
+        MAX_POWER = 15.0
+        
+        # Linear interpolation based on distance
+        power_factor = distance_to_goal / (FIELD_WIDTH // 2)  # 0.0 to 1.0
+        return MIN_POWER + (MAX_POWER - MIN_POWER) * power_factor
+
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
@@ -121,6 +162,55 @@ class StrikerBrain:
 
         dx, dy = 0.0, 0.0
 
+        # First priority: Check if we're in a shooting position
+        if self.should_shoot(x, y, ball_x, ball_y, is_left_team, is_closest):
+            # Only shoot if cooldown has expired
+            if percepts.get('elapsed_time', 0) - self.last_shot_time > self.shot_cooldown:
+                # Calculate shot angle with some randomization to avoid goalkeeper
+                goal_y_variation = random.uniform(-GOAL_WIDTH/4, GOAL_WIDTH/4)
+                target_y = goal_center_y + goal_y_variation
+                
+                # Calculate direction to goal
+                dx_to_goal = goal_x - x
+                dy_to_goal = target_y - y
+                
+                # Normalize direction
+                shot_distance = math.hypot(dx_to_goal, dy_to_goal)
+                if shot_distance > 0:
+                    # Calculate shot power
+                    shot_power = self.calculate_shot_power(abs(goal_x - x))
+                    
+                    # Set shot velocity
+                    dx = (dx_to_goal / shot_distance) * shot_power
+                    dy = (dy_to_goal / shot_distance) * shot_power
+                    
+                    # Update last shot time
+                    self.last_shot_time = percepts.get('elapsed_time', 0)
+                    
+                    # Add shooting line to percepts
+                    if 'shooting_lines' not in percepts:
+                        percepts['shooting_lines'] = []
+                    percepts['shooting_lines'].append({
+                        'start': (x, y),
+                        'end': (goal_x, target_y),
+                        'color': 'purple'
+                    })
+                    
+                    return dx, dy
+
+        # If we're in the opposing half, try to get into shooting position first
+        in_opposing_half = (is_left_team and x > FIELD_WIDTH // 2) or (not is_left_team and x < FIELD_WIDTH // 2)
+        if in_opposing_half and is_closest:
+            # Move towards a good shooting position
+            target_y = goal_center_y
+            dy_to_goal = target_y - y
+            if abs(dy_to_goal) > 5:
+                direction = 1 if dy_to_goal > 0 else -1
+                speed = min(8.0, max(2.0, abs(dy_to_goal) / 10))
+                dy = direction * speed
+                return dx, dy
+
+        # If not shooting, use normal positioning logic
         # --- Predict Ball Y if from teammate ---
         if ball_from_teammate and ball_dx != 0:
             time_to_reach = (x - ball_x) / ball_dx
@@ -269,9 +359,49 @@ class DefenderBrain:
 
 class MidfielderBrain:
     def __init__(self, perception_type=None):
-        # self.base_x = FIELD_WIDTH // 2
         self.base_y = FIELD_HEIGHT // 2
         self.perception_type = perception_type
+        self.last_shot_time = -100  # Cooldown tracking
+        self.shot_cooldown = 45     # Longer cooldown than striker (30)
+
+    def should_shoot(self, x, y, ball_x, ball_y, is_left_team, is_closest):
+        """Determine if midfielder should take a shot based on position and situation."""
+        # Basic position check (in opposing half)
+        in_opposing_half = (is_left_team and x > FIELD_WIDTH // 2) or (not is_left_team and x < FIELD_WIDTH // 2)
+        if not in_opposing_half:
+            return False
+
+        # Distance to goal
+        goal_x = FIELD_WIDTH if is_left_team else 0
+        distance_to_goal = abs(goal_x - x)
+        
+        # Midfielder shoots from closer range than striker
+        if distance_to_goal > FIELD_WIDTH // 3:  # Striker uses FIELD_WIDTH // 2
+            return False
+
+        # Must be close to ball to shoot
+        if abs(ball_x - x) > 25 or abs(ball_y - y) > 25:
+            return False
+
+        # Must be closest to ball
+        if not is_closest:
+            return False
+
+        # Check if in good vertical position relative to goal
+        goal_top = (FIELD_HEIGHT - GOAL_WIDTH) // 2
+        goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
+        good_vertical_position = goal_top - 100 <= y <= goal_bottom + 100  # Added 100-unit buffer
+
+        return good_vertical_position
+
+    def calculate_shot_power(self, distance_to_goal):
+        """Calculate shot power based on distance to goal."""
+        MIN_POWER = 10.0  # Higher minimum power than striker (8.0)
+        MAX_POWER = 18.0  # Higher maximum power than striker (15.0)
+        
+        # Linear interpolation based on distance
+        power_factor = distance_to_goal / (FIELD_WIDTH // 3)  # Using shorter range
+        return MIN_POWER + (MAX_POWER - MIN_POWER) * power_factor
 
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
@@ -279,9 +409,64 @@ class MidfielderBrain:
 
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-
+        is_closest = percepts.get('is_closest', False)
         is_left_team = x < FIELD_WIDTH // 2
 
+        # Get goal information
+        goal_x = FIELD_WIDTH if is_left_team else 0
+        goal_top = (FIELD_HEIGHT - GOAL_WIDTH) // 2
+        goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
+        goal_center_y = (goal_top + goal_bottom) // 2
+
+        # First priority: Check if we're in a shooting position
+        if self.should_shoot(x, y, ball_x, ball_y, is_left_team, is_closest):
+            # Only shoot if cooldown has expired
+            if percepts.get('elapsed_time', 0) - self.last_shot_time > self.shot_cooldown:
+                # Calculate shot angle with more variation than striker
+                goal_y_variation = random.uniform(-GOAL_WIDTH/3, GOAL_WIDTH/3)  # More variation
+                target_y = goal_center_y + goal_y_variation
+                
+                # Calculate direction to goal
+                dx_to_goal = goal_x - x
+                dy_to_goal = target_y - y
+                
+                # Normalize direction
+                shot_distance = math.hypot(dx_to_goal, dy_to_goal)
+                if shot_distance > 0:
+                    # Calculate shot power
+                    shot_power = self.calculate_shot_power(abs(goal_x - x))
+                    
+                    # Set shot velocity
+                    dx = (dx_to_goal / shot_distance) * shot_power
+                    dy = (dy_to_goal / shot_distance) * shot_power
+                    
+                    # Update last shot time
+                    self.last_shot_time = percepts.get('elapsed_time', 0)
+                    
+                    # Add shooting line to percepts
+                    if 'shooting_lines' not in percepts:
+                        percepts['shooting_lines'] = []
+                    percepts['shooting_lines'].append({
+                        'start': (x, y),
+                        'end': (goal_x, target_y),
+                        'color': 'purple'
+                    })
+                    
+                    return dx, dy
+
+        # If we're in the opposing half, try to get into shooting position first
+        in_opposing_half = (is_left_team and x > FIELD_WIDTH // 2) or (not is_left_team and x < FIELD_WIDTH // 2)
+        if in_opposing_half and is_closest:
+            # Move towards a good shooting position
+            target_y = goal_center_y
+            dy_to_goal = target_y - y
+            if abs(dy_to_goal) > 5:
+                direction = 1 if dy_to_goal > 0 else -1
+                speed = min(7.0, max(2.0, abs(dy_to_goal) / 10))
+                dy = direction * speed
+                return 0.0, dy
+
+        # Only consider normal positioning if not in shooting position
         track_zone_x = 200  # Track/vision zone
 
         # Determine if ball is in track zone
