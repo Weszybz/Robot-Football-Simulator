@@ -1,6 +1,10 @@
 import math
 import random
-from football_field import FIELD_MARGIN, FIELD_HEIGHT, FIELD_WIDTH
+from constants import FIELD_MARGIN, FIELD_HEIGHT, FIELD_WIDTH
+from brains import GoalkeeperBrain, DefenderBrain
+
+MIN_SPACING = 20.0
+REPULSION_FACTOR = 5.0
 
 class Bot:
     def __init__(self, x, y, team_color, position_brain, perception_brain):
@@ -18,6 +22,9 @@ class Bot:
         self.position_brain = position_brain
         self.perception_brain = perception_brain
         self.color = 'red' if team_color == 'Red' else 'blue'
+        
+        # Determine if this bot should use the separation rule based on its brain type
+        self.uses_separation_rule = not isinstance(position_brain, GoalkeeperBrain)  # Goalkeepers don't use separation
 
     def update(self, canvas, agents, objects):
         percepts = self.perception_brain.sense(self, agents, objects)

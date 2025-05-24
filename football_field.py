@@ -3,11 +3,8 @@ import time
 import random
 import tkinter.messagebox
 import math
-
-FIELD_WIDTH = 1000
-FIELD_HEIGHT = 600
-GOAL_WIDTH = 200
-FIELD_MARGIN = 20
+from constants import FIELD_WIDTH, FIELD_HEIGHT, FIELD_MARGIN, GOAL_WIDTH
+from bot_base import DefenderBrain
 
 class FootballField:
 
@@ -608,7 +605,7 @@ class FootballField:
                 dx = ball.x - bot.x
                 dy = ball.y - bot.y
                 dist = (dx ** 2 + dy ** 2) ** 0.5
-                min_dist = ball.radius + bot.radius
+                min_dist = ball.radius + bot.radius + (self.possession_buffer if self.ball_possessing_bot == bot else 0)
 
                 if dist < min_dist:
                     # If ball is not possessed, start possession
@@ -783,15 +780,37 @@ class FootballField:
 
         # --- Bot-bot collision detection ---
         num_bots = len(self.agents)
-        extra_gap = 100.0
+        possession_gap = 100.0  # Base gap for team in possession
+        defender_possession_gap = 150.0  # Larger gap for defenders in possession
+        minimal_gap = 30.0     # Smaller gap to prevent complete overlap
+        
         for i in range(num_bots):
             for j in range(i + 1, num_bots):
                 bot1 = self.agents[i]
                 bot2 = self.agents[j]
+                
+                # Skip separation rules for goalkeepers
+                if not bot1.uses_separation_rule or not bot2.uses_separation_rule:
+                    separation_gap = 0
+                # If both are defenders from same team in possession, use larger gap
+                elif (bot1.team == bot2.team == self.possession_team and 
+                      isinstance(bot1.position_brain, DefenderBrain) and 
+                      isinstance(bot2.position_brain, DefenderBrain)):
+                    separation_gap = defender_possession_gap
+                # If same team and has possession, use normal possession gap
+                elif bot1.team == bot2.team and bot1.team == self.possession_team:
+                    separation_gap = possession_gap
+                # If same team but not in possession, use minimal gap
+                elif bot1.team == bot2.team:
+                    separation_gap = minimal_gap
+                # If different teams, use minimal gap
+                else:
+                    separation_gap = minimal_gap
+                
                 dx = bot2.x - bot1.x
                 dy = bot2.y - bot1.y
                 dist = (dx ** 2 + dy ** 2) ** 0.5
-                min_dist = bot1.radius + bot2.radius + extra_gap
+                min_dist = bot1.radius + bot2.radius + separation_gap
 
                 if dist < min_dist and dist > 0:
                     # Normalize direction vector
@@ -1110,6 +1129,7 @@ class FootballField:
         self.ball_distance = 0
         self.stored_ball_speed = (0, 0)
         self.target_teammate = None
+        self.possession_buffer = 15  # Added buffer for more stable possession
         
         # Pass detection variables
         self.pass_window = 60  # Increased to 60 frames (about 1 second)

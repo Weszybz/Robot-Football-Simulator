@@ -178,7 +178,6 @@ class DefenderBrain:
                 self.base_x = 200
                 self.base_y = FIELD_HEIGHT // 4
             elif self.role == 'right_back':
-                # self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
                 self.base_x = 200
                 self.base_y = 3 * FIELD_HEIGHT // 4
         else:
@@ -186,7 +185,6 @@ class DefenderBrain:
                 self.base_x = FIELD_WIDTH - 200
                 self.base_y = FIELD_HEIGHT // 4
             elif self.role == 'right_back':
-                # self.x_min, self.x_max = FIELD_WIDTH // 2, 3 * FIELD_WIDTH // 4
                 self.base_x = FIELD_WIDTH - 200
                 self.base_y = 3 * FIELD_HEIGHT // 4
 
@@ -199,13 +197,17 @@ class DefenderBrain:
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
         teammates = percepts.get('teammates', [])
+        ball_from_teammate = percepts.get('ball_from_teammate', False)
 
         is_left_team = x < FIELD_WIDTH // 2
 
         if not self.initialized:
             self.setup(is_left_team)
 
-        # 1. Calculate whether ball is inside defender's field of view (half field)
+        # Determine if we're in possession based on ball_from_teammate
+        team_has_possession = ball_from_teammate
+
+        # 1. Calculate whether ball is inside defender's field of view
         if is_left_team:
             should_track = ball_x <= FIELD_WIDTH // 3
         else:
@@ -229,14 +231,29 @@ class DefenderBrain:
             dy += move_dy
             return dx, dy
 
-        # --- Ball IS in view -> track vertically and stay inside zone ---
-
-        # Track ball vertically
-        vertical_diff = ball_y - y
-        if abs(vertical_diff) > 5:
-            direction_y = 1 if vertical_diff > 0 else -1
-            speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
-            dy += direction_y * speed_y
+        # --- Ball IS in view ---
+        if team_has_possession:
+            # When in possession, maintain more disciplined positioning
+            # Right back stays on right, left back stays on left
+            target_y = ball_y
+            if self.role == 'right_back':
+                target_y = max(FIELD_HEIGHT // 2, min(ball_y, 3 * FIELD_HEIGHT // 4))
+            else:  # left_back
+                target_y = min(FIELD_HEIGHT // 2, max(ball_y, FIELD_HEIGHT // 4))
+            
+            # Move towards target position with controlled speed
+            vertical_diff = target_y - y
+            if abs(vertical_diff) > 5:
+                direction_y = 1 if vertical_diff > 0 else -1
+                speed_y = min(5.0, max(2.0, abs(vertical_diff) / 10))  # Reduced speed when in possession
+                dy += direction_y * speed_y
+        else:
+            # When defending, track more aggressively
+            vertical_diff = ball_y - y
+            if abs(vertical_diff) > 5:
+                direction_y = 1 if vertical_diff > 0 else -1
+                speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
+                dy += direction_y * speed_y
 
         return dx, dy
 
