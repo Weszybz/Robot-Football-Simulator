@@ -3,7 +3,7 @@ import math
 class PerceptionBrain:
     def think_and_act(self, percepts, x, y, speed_left, speed_right):
         """
-        Compute movement commands (dx, dy) based on the bot’s perception.
+        Compute movement commands (dx, dy) based on the bot's perception.
         :param percepts: Dictionary from Bot.sense() including ball info
         :param x, y: Current bot position
         :return: dx, dy movement
@@ -130,6 +130,10 @@ class BlackboardPerception(PerceptionBrain):
 class SubsumptionPerception(PerceptionBrain):
     def sense(self, bot, agents, objects):
         ball = next((o for o in objects if hasattr(o, 'is_ball') and o.is_ball), None)
+        
+        # Get opponent positions
+        opponents = [(agent.x, agent.y) for agent in agents if agent.team != bot.team]
+        
         if ball:
             dx = ball.x - bot.x
             dy = ball.y - bot.y
@@ -142,17 +146,19 @@ class SubsumptionPerception(PerceptionBrain):
                 'ball_x': ball.x,
                 'ball_y': ball.y,
                 'ball_dx': ball.dx,
-                'ball_dy': ball.dy
+                'ball_dy': ball.dy,
+                'opponents': opponents  # Add opponents to percepts
             }
-        return {}
+        return {'opponents': opponents}  # Return opponents even if ball not found
 
     def think_and_act(self, percepts, x, y, speed_left, speed_right):
         if not percepts:
             return 0, 0
 
-        dist = percepts['distance_to_ball']
-        ball_x = percepts['ball_x']
-        ball_y = percepts['ball_y']
+        # Get ball info if available
+        dist = percepts.get('distance_to_ball')
+        ball_x = percepts.get('ball_x')
+        ball_y = percepts.get('ball_y')
 
         # You may want to use a global or config for FIELD_WIDTH
         try:
@@ -160,14 +166,16 @@ class SubsumptionPerception(PerceptionBrain):
         except Exception:
             FIELD_WIDTH = 1000
 
-        if dist < 50:
+        if dist and dist < 50:
             # Close to ball, switch to shooting toward opponent goal
             goal_x = FIELD_WIDTH if x < FIELD_WIDTH / 2 else 0
             dx = (goal_x - x) * 0.15
             dy = (ball_y - y) * 0.15
             return dx, dy
-        else:
+        elif ball_x and ball_y:
             # Chase the ball
             dx = (ball_x - x) * 0.1
             dy = (ball_y - y) * 0.1
             return dx, dy
+        else:
+            return 0, 0
