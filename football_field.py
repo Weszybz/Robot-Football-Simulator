@@ -265,47 +265,26 @@ class FootballField:
                         else:
                             self.initial_contact_angle = math.atan2(closest_bot.y - ball.y, closest_bot.x - ball.x)
                         
-                        # --- SHOOTING OR PASSING MECHANIC FOR STRIKER ---
-                        if hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain':
-                            if self.should_shoot_striker(closest_bot):
-                                # Target is the center of the opponent's goal (shoot)
-                                is_left_team = closest_bot.team == 'Red'
-                                goal_x = FIELD_WIDTH if is_left_team else 0
-                                goal_y = FIELD_HEIGHT // 2
-                                target_angle = math.atan2(goal_y - closest_bot.y, goal_x - closest_bot.x)
-                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                    self.initial_contact_angle, target_angle
-                                )
-                                self.target_teammate = None
-                                self.second_target = None
-                                self.ball_distance = distance
-                                self.stored_ball_speed = (ball.dx, ball.dy)
-                                ball.dx = 0
-                                ball.dy = 0
-                                closest_bot._striker_action = 'shoot'
-                            else:
-                                # Use passing mechanic (like other players)
-                                teammate_options = self.find_nearest_teammate(closest_bot)
-                                if teammate_options:
-                                    self.target_teammate, target_angle = teammate_options[0]
-                                    self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
-                                    self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                        self.initial_contact_angle, target_angle
-                                    )
-                                else:
-                                    default_angle = math.pi if closest_bot.team == 'Red' else 0
-                                    self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                        self.initial_contact_angle, default_angle
-                                    )
-                                    self.target_teammate = None
-                                    self.second_target = None
-                                self.ball_distance = distance
-                                self.stored_ball_speed = (ball.dx, ball.dy)
-                                ball.dx = 0
-                                ball.dy = 0
-                                closest_bot._striker_action = None  # For consistency, not used for non-strikers
+                        # --- SHOOTING OR PASSING MECHANIC FOR ALL PLAYERS ---
+                        in_opponent_half = (closest_bot.team == 'Red' and closest_bot.x > FIELD_WIDTH // 2) or (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH // 2)
+                        if in_opponent_half:
+                            # Target is the center of the opponent's goal (shoot)
+                            is_left_team = closest_bot.team == 'Red'
+                            goal_x = FIELD_WIDTH if is_left_team else 0
+                            goal_y = FIELD_HEIGHT // 2
+                            target_angle = math.atan2(goal_y - closest_bot.y, goal_x - closest_bot.x)
+                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                self.initial_contact_angle, target_angle
+                            )
+                            self.target_teammate = None
+                            self.second_target = None
+                            self.ball_distance = distance
+                            self.stored_ball_speed = (ball.dx, ball.dy)
+                            ball.dx = 0
+                            ball.dy = 0
+                            closest_bot._striker_action = 'shoot'
                         else:
-                            # --- PASSING MECHANIC FOR NON-STRIKERS (existing code) ---
+                            # Use passing mechanic
                             teammate_options = self.find_nearest_teammate(closest_bot)
                             if teammate_options:
                                 self.target_teammate, target_angle = teammate_options[0]
@@ -324,7 +303,7 @@ class FootballField:
                             self.stored_ball_speed = (ball.dx, ball.dy)
                             ball.dx = 0
                             ball.dy = 0
-                            closest_bot._striker_action = None  # For consistency, not used for non-strikers
+                            closest_bot._striker_action = None
                             
                             # Check for saves after ball-bot collision
                             is_goalkeeper_zone = (
@@ -749,6 +728,8 @@ class FootballField:
         # --- Ball-bot collision detection ---
         ball = next((o for o in self.passive_objects if hasattr(o, 'is_ball') and o.is_ball), None)
         if ball:
+            # Find the closest bot to the ball
+            closest_bot = min(self.agents, key=lambda bot: ((bot.x - ball.x) ** 2 + (bot.y - ball.y) ** 2) ** 0.5)
             for bot in self.agents:
                 dx = ball.x - bot.x
                 dy = ball.y - bot.y
@@ -756,159 +737,37 @@ class FootballField:
                 min_dist = ball.radius + bot.radius + (self.possession_buffer if self.ball_possessing_bot == bot else 0)
 
                 if dist < min_dist:
-                    # If ball is not possessed, start possession
-                    if self.ball_possessing_bot is None:
-                        self.ball_possessing_bot = bot
-                        self.possession_start_time = self.elapsed_time
-                        
-                        # Calculate initial contact angle from ball's direction of travel
-                        if ball.dx != 0 or ball.dy != 0:
-                            self.initial_contact_angle = math.atan2(-ball.dy, -ball.dx)
-                        else:
-                            self.initial_contact_angle = math.atan2(dy, dx)
-                        
-                        # Find nearest teammates and their angles
-                        teammate_options = self.find_nearest_teammate(bot)
-                        if teammate_options:
-                            # Use the first option as primary target
-                            self.target_teammate, target_angle = teammate_options[0]
-                            # Store second option if available
-                            self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
-                            
-                            # Determine optimal rotation direction for primary target
-                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                self.initial_contact_angle, target_angle
-                            )
-                        else:
-                            # If no teammates, use default forward direction
-                            default_angle = math.pi if bot.team == 'Red' else 0
-                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                self.initial_contact_angle, default_angle
-                            )
-                            self.target_teammate = None
-                            self.second_target = None
-                        
-                        self.ball_distance = min_dist
-                        self.stored_ball_speed = (ball.dx, ball.dy)
-                        ball.dx = 0
-                        ball.dy = 0
-
-                    # Check for saves after ball-bot collision
-                    is_goalkeeper_zone = (
-                            bot.x <= 50 or bot.x >= FIELD_WIDTH - 50  # near left or right edge
-                    )
-
-                    defending_left = bot.team == 'Red' and bot.x < FIELD_WIDTH // 2
-                    defending_right = bot.team == 'Blue' and bot.x > FIELD_WIDTH // 2
-
-                    if is_goalkeeper_zone and (defending_left or defending_right):
-                        if self.last_shot_team and self.last_shot_team != bot.team:
-                            if self.elapsed_time - self.last_shot_time < 30:
-                                self.stats[bot.team]['saves'] += 1
-                                print(f"{bot.team} keeper made a SAVE!")
-                                self.last_shot_team = None  # prevent double-counting
-                    
-                    # If this bot has possession, update ball position with smooth rotation
-                    if self.ball_possessing_bot == bot:
-                        possession_time = self.elapsed_time - self.possession_start_time
-                        
-                        if possession_time < self.possession_duration:
-                            # Calculate interpolation factor (0 to 1)
-                            t = possession_time / self.possession_duration
-                            t = self._smooth_step(t)
-                            
-                            # Calculate the angle difference based on rotation direction
-                            if self.rotate_clockwise:
-                                current_angle = self.initial_contact_angle - (
-                                    self.normalize_angle(self.initial_contact_angle - self.target_release_angle) * t
+                    # Only the closest bot can take possession
+                    if bot == closest_bot:
+                        if self.ball_possessing_bot is None or self.ball_possessing_bot != bot:
+                            self.ball_possessing_bot = bot
+                            self.possession_start_time = self.elapsed_time
+                            # Calculate initial contact angle from ball's direction of travel
+                            if ball.dx != 0 or ball.dy != 0:
+                                self.initial_contact_angle = math.atan2(-ball.dy, -ball.dx)
+                            else:
+                                self.initial_contact_angle = math.atan2(dy, dx)
+                            # Find nearest teammates and their angles
+                            teammate_options = self.find_nearest_teammate(bot)
+                            if teammate_options:
+                                self.target_teammate, target_angle = teammate_options[0]
+                                self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
+                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                    self.initial_contact_angle, target_angle
                                 )
                             else:
-                                current_angle = self.initial_contact_angle + (
-                                    self.normalize_angle(self.target_release_angle - self.initial_contact_angle) * t
+                                default_angle = math.pi if bot.team == 'Red' else 0
+                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                    self.initial_contact_angle, default_angle
                                 )
-                            
-                            # Update ball position based on interpolated angle
-                            rotated_x = bot.x + math.cos(current_angle) * self.ball_distance
-                            rotated_y = bot.y + math.sin(current_angle) * self.ball_distance
-                            
-                            # Draw lines to both potential targets
-                            # Only show yellow pass lines for non-strikers
-                            if self.target_teammate and not (hasattr(bot, 'position_brain') and bot.position_brain.__class__.__name__ == 'StrikerBrain'):
-                                self.canvas.create_line(
-                                    bot.x, bot.y,
-                                    self.target_teammate.x, self.target_teammate.y,
-                                    fill='yellow', width=1, dash=(4, 4),
-                                    tags='dynamic'
-                                )
-                            if self.second_target and not (hasattr(bot, 'position_brain') and bot.position_brain.__class__.__name__ == 'StrikerBrain'):
-                                self.canvas.create_line(
-                                    bot.x, bot.y,
-                                    self.second_target[0].x, self.second_target[0].y,
-                                    fill='yellow', width=1, dash=(4, 4),
-                                    tags='dynamic'
-                                )
-                        else:
-                            # Only release if we have a valid target
-                            if self.target_teammate:
-                                dx = self.target_teammate.x - bot.x
-                                dy = self.target_teammate.y - bot.y
-                                dist = math.hypot(dx, dy)
-                                
-                                # Calculate base speed from stored momentum
-                                base_speed = math.hypot(self.stored_ball_speed[0], self.stored_ball_speed[1])
-                                
-                                # Calculate appropriate pass speed based on distance
-                                pass_speed = self.calculate_pass_speed(dist, base_speed)
-                                
-                                # Apply the calculated speed in the direction of the teammate
-                                ball.dx = (dx / dist) * pass_speed
-                                ball.dy = (dy / dist) * pass_speed
-                            else:
-                                # No valid target, maintain possession
-                                self.possession_start_time = self.elapsed_time - (self.possession_duration - 1)
-                                return
-                            
-                            self.ball_possessing_bot = None
-                            self.possession_start_time = -1
-                            self.target_teammate = None
-                            self.second_target = None
-                    
-                    # If different bot touches the ball, transfer possession
-                    elif self.ball_possessing_bot != bot:
-                        self.ball_possessing_bot = bot
-                        self.possession_start_time = self.elapsed_time
-                        
-                        # Calculate initial contact angle from ball's direction of travel
-                        if ball.dx != 0 or ball.dy != 0:
-                            self.initial_contact_angle = math.atan2(-ball.dy, -ball.dx)
-                        else:
-                            self.initial_contact_angle = math.atan2(dy, dx)
-                        
-                        # Find nearest teammates and their angles
-                        teammate_options = self.find_nearest_teammate(bot)
-                        if teammate_options:
-                            # Use the first option as primary target
-                            self.target_teammate, target_angle = teammate_options[0]
-                            # Store second option if available
-                            self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
-                            
-                            # Determine optimal rotation direction for primary target
-                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                self.initial_contact_angle, target_angle
-                            )
-                        else:
-                            # If no teammates, use default forward direction
-                            default_angle = math.pi if bot.team == 'Red' else 0
-                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                self.initial_contact_angle, default_angle
-                            )
-                            self.target_teammate = None
-                            self.second_target = None
-                        
-                        self.ball_distance = min_dist
-                        self.stored_ball_speed = (ball.dx, ball.dy)
-                        ball.dx = 0
-                        ball.dy = 0
+                                self.target_teammate = None
+                                self.second_target = None
+                            self.ball_distance = min_dist
+                            self.stored_ball_speed = (ball.dx, ball.dy)
+                            ball.dx = 0
+                            ball.dy = 0
+                        # If this bot has possession, update ball position with smooth rotation (existing logic continues)
+                    # Non-closest bots do not affect the ball (no bounce/push)
 
         # --- Bot-bot collision detection ---
         num_bots = len(self.agents)

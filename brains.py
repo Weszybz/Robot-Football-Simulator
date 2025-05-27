@@ -125,6 +125,22 @@ class StrikerBrain:
             if dist < 70 and dist > 0:
                 dx += (x - mate_x) / dist * 2.5
                 dy += (y - mate_y) / dist * 2.5
+        # Determine if this bot is on the defending team
+        defending = False
+        if hasattr(percepts, 'possession_team'):
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        elif 'possession_team' in percepts:
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        else:
+            # Fallback: if ball is on the other side of the field
+            if 'ball_x' in percepts and 'team' in percepts:
+                if percepts['team'] == 'Red':
+                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
+                else:
+                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
+        if defending:
+            dx *= 0.7
+            dy *= 0.7
         return dx, dy
 
 
@@ -217,6 +233,23 @@ class DefenderBrain:
                 speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
                 dy += direction_y * speed_y
 
+        # Determine if this bot is on the defending team
+        defending = False
+        if hasattr(percepts, 'possession_team'):
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        elif 'possession_team' in percepts:
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        else:
+            # Fallback: if ball is on the other side of the field
+            if 'ball_x' in percepts and 'team' in percepts:
+                if percepts['team'] == 'Red':
+                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
+                else:
+                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
+
+        if defending:
+            dx *= 0.7
+            dy *= 0.7
         return dx, dy
 
     def _move_towards(self, x, y, target_x, target_y):
@@ -256,11 +289,28 @@ class MidfielderBrain:
         support_y = ball_y + math.sin(angle) * 50
         dx = (support_x - x) * 0.08
         dy = (support_y - y) * 0.08
+        # Increased repulsion for midfielders
         for mate_x, mate_y in teammates:
             dist = math.hypot(x - mate_x, y - mate_y)
-            if dist < 80 and dist > 0:
-                dx += (x - mate_x) / dist * 2.5
-                dy += (y - mate_y) / dist * 2.5
+            if dist < 120 and dist > 0:  # Increased from 80
+                dx += (x - mate_x) / dist * 4.0  # Increased strength
+                dy += (y - mate_y) / dist * 4.0
+        # Determine if this bot is on the defending team
+        defending = False
+        if hasattr(percepts, 'possession_team'):
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        elif 'possession_team' in percepts:
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        else:
+            # Fallback: if ball is on the other side of the field
+            if 'ball_x' in percepts and 'team' in percepts:
+                if percepts['team'] == 'Red':
+                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
+                else:
+                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
+        if defending:
+            dx *= 0.7
+            dy *= 0.7
         return dx, dy
 
 
@@ -289,4 +339,19 @@ class FieldAwareBrain:
 
         direction = 1 if dy > 0 else -1
         speed = 8.0 if in_attacking_half else 4.0
+        # Determine if this bot is on the defending team
+        defending = False
+        if hasattr(percepts, 'possession_team'):
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        elif 'possession_team' in percepts:
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        else:
+            # Fallback: if ball is on the other side of the field
+            if 'ball_x' in percepts and 'team' in percepts:
+                if percepts['team'] == 'Red':
+                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
+                else:
+                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
+        if defending:
+            speed *= 0.7
         return direction * speed, direction * speed
