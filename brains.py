@@ -89,6 +89,15 @@ class GoalkeeperBrain:
         speed = min(4.0, max(1.5, abs(dy) / 15))
         return 0.0, direction * speed
 
+        # Freeze movement if in possession
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if team_has_possession:
+            return 0.0, 0.0
+
 
 class StrikerBrain:
     """
@@ -103,56 +112,7 @@ class StrikerBrain:
             return 0.0, 0.0
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-        is_closest = percepts.get('is_closest', False)
-        teammates = percepts.get('teammates', [])
         team = percepts.get('team', None)
-        # Determine opponent striker position
-        opponent_striker_in_same_half = False
-        if 'opponent_strikers' in percepts:
-            for opp_x, opp_y in percepts['opponent_strikers']:
-                if (team == 'Red' and opp_x < FIELD_WIDTH // 2) or (team == 'Blue' and opp_x > FIELD_WIDTH // 2):
-                    opponent_striker_in_same_half = True
-                    break
-        # Determine goal position
-        opponent_goal_x = FIELD_WIDTH if team == 'Red' else 0
-        opponent_goal_y = FIELD_HEIGHT // 2
-        in_opponent_half = (team == 'Red' and x > FIELD_WIDTH // 2) or (team == 'Blue' and x < FIELD_WIDTH // 2)
-        in_own_half = not in_opponent_half
-        # Aggressive counter: if striker is in own half, is_closest, and opponent striker is in same half, move to goal
-        if is_closest and in_own_half and opponent_striker_in_same_half:
-            dx = (opponent_goal_x - x) * 0.15
-            dy = (opponent_goal_y - y) * 0.15
-            speed = math.hypot(dx, dy)
-            if speed > 8.0:
-                dx = (dx / speed) * 8.0
-                dy = (dy / speed) * 8.0
-            # Slug mode: if team does not have possession, move extremely slow
-            team_has_possession = False
-            if hasattr(percepts, 'possession_team') and 'team' in percepts:
-                team_has_possession = (percepts['possession_team'] == percepts['team'])
-            elif 'possession_team' in percepts and 'team' in percepts:
-                team_has_possession = (percepts['possession_team'] == percepts['team'])
-            if not team_has_possession:
-                dx *= 0.2
-                dy *= 0.2
-            return dx, dy
-        # Usual logic: if in opponent half and is_closest, move to goal
-        if is_closest and in_opponent_half:
-            dx = (opponent_goal_x - x) * 0.15
-            dy = (opponent_goal_y - y) * 0.15
-            speed = math.hypot(dx, dy)
-            if speed > 8.0:
-                dx = (dx / speed) * 8.0
-                dy = (dy / speed) * 8.0
-            team_has_possession = False
-            if hasattr(percepts, 'possession_team') and 'team' in percepts:
-                team_has_possession = (percepts['possession_team'] == percepts['team'])
-            elif 'possession_team' in percepts and 'team' in percepts:
-                team_has_possession = (percepts['possession_team'] == percepts['team'])
-            if not team_has_possession:
-                dx *= 0.2
-                dy *= 0.2
-            return dx, dy
         dx = (ball_x - x) * 0.15
         dy = (ball_y - y) * 0.15
         speed = math.hypot(dx, dy)
@@ -166,8 +126,22 @@ class StrikerBrain:
         elif 'possession_team' in percepts and 'team' in percepts:
             team_has_possession = (percepts['possession_team'] == percepts['team'])
         if not team_has_possession:
-            dx *= 0.2
-            dy *= 0.2
+            dx *= 0.1
+            dy *= 0.1
+        # If ball is in first quarter of Red side, Red striker moves to 60% of field width (10% above halfway)
+        if team == 'Red' and ball_x < FIELD_WIDTH * 0.25:
+            target_x = FIELD_WIDTH * 0.60  # 0.5 + 0.1
+            target_y = FIELD_HEIGHT // 2
+            dx = (target_x - x) * 0.05
+            dy = (target_y - y) * 0.05
+            return dx, dy
+        # If ball is in first quarter of Blue side, Blue striker moves to 40% of field width (10% above halfway)
+        if team == 'Blue' and ball_x < FIELD_WIDTH * 0.25:
+            target_x = FIELD_WIDTH * 0.40  # 0.5 - 0.1
+            target_y = FIELD_HEIGHT // 2
+            dx = (target_x - x) * 0.05
+            dy = (target_y - y) * 0.05
+            return dx, dy
         return dx, dy
 
 
@@ -329,8 +303,8 @@ class MidfielderBrain:
         elif 'possession_team' in percepts and 'team' in percepts:
             team_has_possession = (percepts['possession_team'] == percepts['team'])
         if not team_has_possession:
-            dx *= 0.2
-            dy *= 0.2
+            dx *= 0.15
+            dy *= 0.15
         return dx, dy
 
 
