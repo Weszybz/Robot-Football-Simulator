@@ -97,7 +97,7 @@ class StrikerBrain:
     def __init__(self, role='center_forward', perception_type=None):
         self.perception_type = perception_type
         self.role = role  # 'center_forward' or 'wide_forward'
-    
+
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
@@ -217,7 +217,7 @@ class MidfielderBrain:
     def __init__(self, perception_type=None):
         self.base_y = FIELD_HEIGHT // 2
         self.perception_type = perception_type
-    
+
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
