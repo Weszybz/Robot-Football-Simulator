@@ -105,42 +105,69 @@ class StrikerBrain:
         ball_y = percepts['ball_y']
         is_closest = percepts.get('is_closest', False)
         teammates = percepts.get('teammates', [])
-        if is_closest:
-            # Ignore repulsion, move directly to the ball
-            dx = (ball_x - x) * 0.15
-            dy = (ball_y - y) * 0.15
+        team = percepts.get('team', None)
+        # Determine opponent striker position
+        opponent_striker_in_same_half = False
+        if 'opponent_strikers' in percepts:
+            for opp_x, opp_y in percepts['opponent_strikers']:
+                if (team == 'Red' and opp_x < FIELD_WIDTH // 2) or (team == 'Blue' and opp_x > FIELD_WIDTH // 2):
+                    opponent_striker_in_same_half = True
+                    break
+        # Determine goal position
+        opponent_goal_x = FIELD_WIDTH if team == 'Red' else 0
+        opponent_goal_y = FIELD_HEIGHT // 2
+        in_opponent_half = (team == 'Red' and x > FIELD_WIDTH // 2) or (team == 'Blue' and x < FIELD_WIDTH // 2)
+        in_own_half = not in_opponent_half
+        # Aggressive counter: if striker is in own half, is_closest, and opponent striker is in same half, move to goal
+        if is_closest and in_own_half and opponent_striker_in_same_half:
+            dx = (opponent_goal_x - x) * 0.15
+            dy = (opponent_goal_y - y) * 0.15
             speed = math.hypot(dx, dy)
             if speed > 8.0:
                 dx = (dx / speed) * 8.0
                 dy = (dy / speed) * 8.0
+            # Slug mode: if team does not have possession, move extremely slow
+            team_has_possession = False
+            if hasattr(percepts, 'possession_team') and 'team' in percepts:
+                team_has_possession = (percepts['possession_team'] == percepts['team'])
+            elif 'possession_team' in percepts and 'team' in percepts:
+                team_has_possession = (percepts['possession_team'] == percepts['team'])
+            if not team_has_possession:
+                dx *= 0.2
+                dy *= 0.2
             return dx, dy
-        # Off-ball support movement and repulsion
-        angle = math.atan2(y - ball_y, x - ball_x)
-        support_x = ball_x + math.cos(angle) * 40
-        support_y = ball_y + math.sin(angle) * 40
-        dx = (support_x - x) * 0.08
-        dy = (support_y - y) * 0.08
-        for mate_x, mate_y in teammates:
-            dist = math.hypot(x - mate_x, y - mate_y)
-            if dist < 70 and dist > 0:
-                dx += (x - mate_x) / dist * 2.5
-                dy += (y - mate_y) / dist * 2.5
-        # Determine if this bot is on the defending team
-        defending = False
-        if hasattr(percepts, 'possession_team'):
-            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
-        elif 'possession_team' in percepts:
-            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
-        else:
-            # Fallback: if ball is on the other side of the field
-            if 'ball_x' in percepts and 'team' in percepts:
-                if percepts['team'] == 'Red':
-                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
-                else:
-                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
-        if defending:
-            dx *= 0.7
-            dy *= 0.7
+        # Usual logic: if in opponent half and is_closest, move to goal
+        if is_closest and in_opponent_half:
+            dx = (opponent_goal_x - x) * 0.15
+            dy = (opponent_goal_y - y) * 0.15
+            speed = math.hypot(dx, dy)
+            if speed > 8.0:
+                dx = (dx / speed) * 8.0
+                dy = (dy / speed) * 8.0
+            team_has_possession = False
+            if hasattr(percepts, 'possession_team') and 'team' in percepts:
+                team_has_possession = (percepts['possession_team'] == percepts['team'])
+            elif 'possession_team' in percepts and 'team' in percepts:
+                team_has_possession = (percepts['possession_team'] == percepts['team'])
+            if not team_has_possession:
+                dx *= 0.2
+                dy *= 0.2
+            return dx, dy
+        dx = (ball_x - x) * 0.15
+        dy = (ball_y - y) * 0.15
+        speed = math.hypot(dx, dy)
+        if speed > 8.0:
+            dx = (dx / speed) * 8.0
+            dy = (dy / speed) * 8.0
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx *= 0.2
+            dy *= 0.2
         return dx, dy
 
 
@@ -233,23 +260,15 @@ class DefenderBrain:
                 speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
                 dy += direction_y * speed_y
 
-        # Determine if this bot is on the defending team
-        defending = False
-        if hasattr(percepts, 'possession_team'):
-            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
-        elif 'possession_team' in percepts:
-            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
-        else:
-            # Fallback: if ball is on the other side of the field
-            if 'ball_x' in percepts and 'team' in percepts:
-                if percepts['team'] == 'Red':
-                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
-                else:
-                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
-
-        if defending:
-            dx *= 0.7
-            dy *= 0.7
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx *= 0.2
+            dy *= 0.2
         return dx, dy
 
     def _move_towards(self, x, y, target_x, target_y):
@@ -272,28 +291,20 @@ class MidfielderBrain:
             return 0.0, 0.0
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-        is_closest = percepts.get('is_closest', False)
         teammates = percepts.get('teammates', [])
-        if is_closest:
-            # Ignore repulsion, move directly to the ball
-            dx = (ball_x - x) * 0.15
-            dy = (ball_y - y) * 0.15
-            speed = math.hypot(dx, dy)
-            if speed > 7.0:
-                dx = (dx / speed) * 7.0
-                dy = (dy / speed) * 7.0
-            return dx, dy
-        # Off-ball support movement and repulsion
-        angle = math.atan2(y - ball_y, x - ball_x)
-        support_x = ball_x + math.cos(angle) * 50
-        support_y = ball_y + math.sin(angle) * 50
+        # Midfielders always hold back: stay behind the ball in their own half
+        if percepts.get('team', None) == 'Red':
+            support_x = min(ball_x - 40, FIELD_WIDTH // 2 - 10)
+        else:
+            support_x = max(ball_x + 40, FIELD_WIDTH // 2 + 10)
+        support_y = ball_y
         dx = (support_x - x) * 0.08
         dy = (support_y - y) * 0.08
         # Increased repulsion for midfielders
         for mate_x, mate_y in teammates:
             dist = math.hypot(x - mate_x, y - mate_y)
-            if dist < 120 and dist > 0:  # Increased from 80
-                dx += (x - mate_x) / dist * 4.0  # Increased strength
+            if dist < 120 and dist > 0:
+                dx += (x - mate_x) / dist * 4.0
                 dy += (y - mate_y) / dist * 4.0
         # Determine if this bot is on the defending team
         defending = False
@@ -311,6 +322,15 @@ class MidfielderBrain:
         if defending:
             dx *= 0.7
             dy *= 0.7
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx *= 0.2
+            dy *= 0.2
         return dx, dy
 
 
@@ -339,19 +359,13 @@ class FieldAwareBrain:
 
         direction = 1 if dy > 0 else -1
         speed = 8.0 if in_attacking_half else 4.0
-        # Determine if this bot is on the defending team
-        defending = False
-        if hasattr(percepts, 'possession_team'):
-            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
-        elif 'possession_team' in percepts:
-            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
-        else:
-            # Fallback: if ball is on the other side of the field
-            if 'ball_x' in percepts and 'team' in percepts:
-                if percepts['team'] == 'Red':
-                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
-                else:
-                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
-        if defending:
-            speed *= 0.7
-        return direction * speed, direction * speed
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx = direction * speed * 0.2
+            dy = direction * speed * 0.2
+        return dx, dy

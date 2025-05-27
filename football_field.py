@@ -255,7 +255,7 @@ class FootballField:
                         self.stats[closest_bot.team]['passes_attempted'] += 1
 
                     # If ball is not possessed, start possession
-                    if self.ball_possessing_bot is None:
+                    if self.ball_possessing_bot is None or self.ball_possessing_bot != closest_bot:
                         self.ball_possessing_bot = closest_bot
                         self.possession_start_time = self.elapsed_time
                         
@@ -268,7 +268,7 @@ class FootballField:
                         # --- SHOOTING OR PASSING MECHANIC FOR ALL PLAYERS ---
                         in_opponent_half = (closest_bot.team == 'Red' and closest_bot.x > FIELD_WIDTH // 2) or (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH // 2)
                         if in_opponent_half:
-                            # Target is the center of the opponent's goal (shoot)
+                            # Always reset and attempt shooting rotation
                             is_left_team = closest_bot.team == 'Red'
                             goal_x = FIELD_WIDTH if is_left_team else 0
                             goal_y = FIELD_HEIGHT // 2
@@ -323,8 +323,27 @@ class FootballField:
                     # If this bot has possession, update ball position with smooth rotation
                     if self.ball_possessing_bot == closest_bot:
                         possession_time = self.elapsed_time - self.possession_start_time
-                        
-                        if possession_time < self.possession_duration:
+                        # --- PANIC SHOT LOGIC ---
+                        in_opponent_half = (closest_bot.team == 'Red' and closest_bot.x > FIELD_WIDTH // 2) or (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH // 2)
+                        is_striker = hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain'
+                        panic_shot = False
+                        if is_striker and getattr(closest_bot, '_striker_action', None) == 'shoot':
+                            # Always move striker toward goal while rotating
+                            goal_x = FIELD_WIDTH if closest_bot.team == 'Red' else 0
+                            goal_y = FIELD_HEIGHT // 2
+                            move_dx = (goal_x - closest_bot.x) * 0.15
+                            move_dy = (goal_y - closest_bot.y) * 0.15
+                            speed = math.hypot(move_dx, move_dy)
+                            if speed > 4.0:
+                                move_dx = (move_dx / speed) * 4.0
+                                move_dy = (move_dy / speed) * 4.0
+                            closest_bot.x += move_dx
+                            closest_bot.y += move_dy
+                            # Panic shot if pushed back to own half, rotation takes too long, or close to goal
+                            distance_to_goal = abs(goal_x - closest_bot.x)
+                            if not in_opponent_half or possession_time > self.possession_duration * 1.5 or distance_to_goal < FIELD_WIDTH / 4:
+                                panic_shot = True
+                        if possession_time < self.possession_duration and not panic_shot:
                             t = possession_time / self.possession_duration
                             t = self._smooth_step(t)
                             # Use robust angle interpolation
@@ -728,80 +747,6 @@ class FootballField:
         # --- Ball-bot collision detection ---
         ball = next((o for o in self.passive_objects if hasattr(o, 'is_ball') and o.is_ball), None)
         if ball:
-            # Possession lock: if a player is in the middle of a pass/shot rotation, only allow the current possessor to update/release the ball
-            if self.ball_possessing_bot is not None:
-                bot = self.ball_possessing_bot
-                possession_time = self.elapsed_time - self.possession_start_time
-                if possession_time < self.possession_duration:
-                    # Only update the current possessor's ball position and release logic
-                    # (Copy the same logic as in update for the possessor's rotation and release)
-                    if self.ball_possessing_bot == bot:
-                        # Update ball position with smooth rotation
-                        if possession_time < self.possession_duration:
-                            t = possession_time / self.possession_duration
-                            t = self._smooth_step(t)
-                            current_angle = self.interpolate_angle(
-                                self.initial_contact_angle, self.target_release_angle, t, self.rotate_clockwise
-                            )
-                            rotated_x = bot.x + math.cos(current_angle) * self.ball_distance
-                            rotated_y = bot.y + math.sin(current_angle) * self.ball_distance
-                            ball.x = rotated_x
-                            ball.y = rotated_y
-                        else:
-                            # --- RELEASE BALL ---
-                            t = 1.0
-                            current_angle = self.interpolate_angle(
-                                self.initial_contact_angle, self.target_release_angle, t, self.rotate_clockwise
-                            )
-                            rotated_x = bot.x + math.cos(current_angle) * self.ball_distance
-                            rotated_y = bot.y + math.sin(current_angle) * self.ball_distance
-                            ball.x = rotated_x
-                            ball.y = rotated_y
-                            if hasattr(bot, 'position_brain') and bot.position_brain.__class__.__name__ == 'StrikerBrain':
-                                if getattr(bot, '_striker_action', None) == 'shoot':
-                                    is_left_team = bot.team == 'Red'
-                                    goal_x = FIELD_WIDTH if is_left_team else 0
-                                    goal_y = FIELD_HEIGHT // 2
-                                    dx_to_goal = goal_x - rotated_x
-                                    dy_to_goal = goal_y - rotated_y
-                                    shot_distance = math.hypot(dx_to_goal, dy_to_goal)
-                                    MIN_POWER = 12.0
-                                    MAX_POWER = 22.0
-                                    power_factor = shot_distance / (FIELD_WIDTH // 2)
-                                    shot_power = MIN_POWER + (MAX_POWER - MIN_POWER) * power_factor
-                                    ball.dx = (dx_to_goal / shot_distance) * shot_power
-                                    ball.dy = (dy_to_goal / shot_distance) * shot_power
-                                else:
-                                    if self.target_teammate:
-                                        dx = self.target_teammate.x - rotated_x
-                                        dy = self.target_teammate.y - rotated_y
-                                        dist = math.hypot(dx, dy)
-                                        base_speed = math.hypot(self.stored_ball_speed[0], self.stored_ball_speed[1])
-                                        pass_speed = self.calculate_pass_speed(dist, base_speed)
-                                        ball.dx = (dx / dist) * pass_speed
-                                        ball.dy = (dy / dist) * pass_speed
-                                    else:
-                                        direction = 1 if bot.team == 'Red' else -1
-                                        ball.dx = direction * 15.0
-                                        ball.dy = 0.0
-                            else:
-                                if self.target_teammate:
-                                    dx = self.target_teammate.x - rotated_x
-                                    dy = self.target_teammate.y - rotated_y
-                                    dist = math.hypot(dx, dy)
-                                    base_speed = math.hypot(self.stored_ball_speed[0], self.stored_ball_speed[1])
-                                    pass_speed = self.calculate_pass_speed(dist, base_speed)
-                                    ball.dx = (dx / dist) * pass_speed
-                                    ball.dy = (dy / dist) * pass_speed
-                                else:
-                                    direction = 1 if bot.team == 'Red' else -1
-                                    ball.dx = direction * 15.0
-                                    ball.dy = 0.0
-                            self.ball_possessing_bot = None
-                            self.possession_start_time = -1
-                            self.target_teammate = None
-                            self.second_target = None
-                    return  # Skip possession assignment for other bots during lock
             # Find the closest bot to the ball
             closest_bot = min(self.agents, key=lambda bot: ((bot.x - ball.x) ** 2 + (bot.y - ball.y) ** 2) ** 0.5)
             for bot in self.agents:
