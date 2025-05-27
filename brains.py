@@ -103,12 +103,28 @@ class StrikerBrain:
             return 0.0, 0.0
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-        dx = (ball_x - x) * 0.15
-        dy = (ball_y - y) * 0.15
-        speed = math.hypot(dx, dy)
-        if speed > 8.0:
-            dx = (dx / speed) * 8.0
-            dy = (dy / speed) * 8.0
+        is_closest = percepts.get('is_closest', False)
+        teammates = percepts.get('teammates', [])
+        if is_closest:
+            # Ignore repulsion, move directly to the ball
+            dx = (ball_x - x) * 0.15
+            dy = (ball_y - y) * 0.15
+            speed = math.hypot(dx, dy)
+            if speed > 8.0:
+                dx = (dx / speed) * 8.0
+                dy = (dy / speed) * 8.0
+            return dx, dy
+        # Off-ball support movement and repulsion
+        angle = math.atan2(y - ball_y, x - ball_x)
+        support_x = ball_x + math.cos(angle) * 40
+        support_y = ball_y + math.sin(angle) * 40
+        dx = (support_x - x) * 0.08
+        dy = (support_y - y) * 0.08
+        for mate_x, mate_y in teammates:
+            dist = math.hypot(x - mate_x, y - mate_y)
+            if dist < 70 and dist > 0:
+                dx += (x - mate_x) / dist * 2.5
+                dy += (y - mate_y) / dist * 2.5
         return dx, dy
 
 
@@ -223,13 +239,28 @@ class MidfielderBrain:
             return 0.0, 0.0
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-        is_left_team = x < FIELD_WIDTH // 2
-        dx = (ball_x - x) * 0.15
-        dy = (ball_y - y) * 0.15
-        speed = math.hypot(dx, dy)
-        if speed > 7.0:
-            dx = (dx / speed) * 7.0
-            dy = (dy / speed) * 7.0
+        is_closest = percepts.get('is_closest', False)
+        teammates = percepts.get('teammates', [])
+        if is_closest:
+            # Ignore repulsion, move directly to the ball
+            dx = (ball_x - x) * 0.15
+            dy = (ball_y - y) * 0.15
+            speed = math.hypot(dx, dy)
+            if speed > 7.0:
+                dx = (dx / speed) * 7.0
+                dy = (dy / speed) * 7.0
+            return dx, dy
+        # Off-ball support movement and repulsion
+        angle = math.atan2(y - ball_y, x - ball_x)
+        support_x = ball_x + math.cos(angle) * 50
+        support_y = ball_y + math.sin(angle) * 50
+        dx = (support_x - x) * 0.08
+        dy = (support_y - y) * 0.08
+        for mate_x, mate_y in teammates:
+            dist = math.hypot(x - mate_x, y - mate_y)
+            if dist < 80 and dist > 0:
+                dx += (x - mate_x) / dist * 2.5
+                dy += (y - mate_y) / dist * 2.5
         return dx, dy
 
 

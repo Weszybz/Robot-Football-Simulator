@@ -265,22 +265,45 @@ class FootballField:
                         else:
                             self.initial_contact_angle = math.atan2(closest_bot.y - ball.y, closest_bot.x - ball.x)
                         
-                        # --- SHOOTING MECHANIC FOR STRIKER ---
+                        # --- SHOOTING OR PASSING MECHANIC FOR STRIKER ---
                         if hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain':
-                            # Target is the center of the opponent's goal
-                            is_left_team = closest_bot.team == 'Red'
-                            goal_x = FIELD_WIDTH if is_left_team else 0
-                            goal_y = FIELD_HEIGHT // 2
-                            target_angle = math.atan2(goal_y - closest_bot.y, goal_x - closest_bot.x)
-                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                self.initial_contact_angle, target_angle
-                            )
-                            self.target_teammate = None
-                            self.second_target = None
-                            self.ball_distance = distance
-                            self.stored_ball_speed = (ball.dx, ball.dy)
-                            ball.dx = 0
-                            ball.dy = 0
+                            if self.should_shoot_striker(closest_bot):
+                                # Target is the center of the opponent's goal (shoot)
+                                is_left_team = closest_bot.team == 'Red'
+                                goal_x = FIELD_WIDTH if is_left_team else 0
+                                goal_y = FIELD_HEIGHT // 2
+                                target_angle = math.atan2(goal_y - closest_bot.y, goal_x - closest_bot.x)
+                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                    self.initial_contact_angle, target_angle
+                                )
+                                self.target_teammate = None
+                                self.second_target = None
+                                self.ball_distance = distance
+                                self.stored_ball_speed = (ball.dx, ball.dy)
+                                ball.dx = 0
+                                ball.dy = 0
+                                closest_bot._striker_action = 'shoot'
+                            else:
+                                # Use passing mechanic (like other players)
+                                teammate_options = self.find_nearest_teammate(closest_bot)
+                                if teammate_options:
+                                    self.target_teammate, target_angle = teammate_options[0]
+                                    self.second_target = teammate_options[1] if len(teammate_options) > 1 else None
+                                    self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                        self.initial_contact_angle, target_angle
+                                    )
+                                else:
+                                    default_angle = math.pi if closest_bot.team == 'Red' else 0
+                                    self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                        self.initial_contact_angle, default_angle
+                                    )
+                                    self.target_teammate = None
+                                    self.second_target = None
+                                self.ball_distance = distance
+                                self.stored_ball_speed = (ball.dx, ball.dy)
+                                ball.dx = 0
+                                ball.dy = 0
+                                closest_bot._striker_action = None  # For consistency, not used for non-strikers
                         else:
                             # --- PASSING MECHANIC FOR NON-STRIKERS (existing code) ---
                             teammate_options = self.find_nearest_teammate(closest_bot)
@@ -301,6 +324,7 @@ class FootballField:
                             self.stored_ball_speed = (ball.dx, ball.dy)
                             ball.dx = 0
                             ball.dy = 0
+                            closest_bot._striker_action = None  # For consistency, not used for non-strikers
                             
                             # Check for saves after ball-bot collision
                             is_goalkeeper_zone = (
@@ -335,14 +359,28 @@ class FootballField:
                             ball.y = rotated_y
                             # Draw lines as before
                             if hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain':
-                                is_left_team = closest_bot.team == 'Red'
-                                goal_x = FIELD_WIDTH if is_left_team else 0
-                                goal_y = FIELD_HEIGHT // 2
-                                self.canvas.create_line(
-                                    closest_bot.x, closest_bot.y,
-                                    goal_x, goal_y,
-                                    fill='purple', width=2, dash=(4, 4), tags='dynamic'
-                                )
+                                if getattr(closest_bot, '_striker_action', None) == 'shoot':
+                                    is_left_team = closest_bot.team == 'Red'
+                                    goal_x = FIELD_WIDTH if is_left_team else 0
+                                    goal_y = FIELD_HEIGHT // 2
+                                    self.canvas.create_line(
+                                        closest_bot.x, closest_bot.y,
+                                        goal_x, goal_y,
+                                        fill='purple', width=2, dash=(4, 4), tags='dynamic'
+                                    )
+                                else:
+                                    if self.target_teammate:
+                                        self.canvas.create_line(
+                                            closest_bot.x, closest_bot.y,
+                                            self.target_teammate.x, self.target_teammate.y,
+                                            fill='yellow', width=1, dash=(4, 4), tags='dynamic'
+                                        )
+                                    if self.second_target:
+                                        self.canvas.create_line(
+                                            closest_bot.x, closest_bot.y,
+                                            self.second_target[0].x, self.second_target[0].y,
+                                            fill='yellow', width=1, dash=(4, 4), tags='dynamic'
+                                        )
                             else:
                                 if self.target_teammate:
                                     self.canvas.create_line(
@@ -368,19 +406,35 @@ class FootballField:
                             ball.x = rotated_x
                             ball.y = rotated_y
                             if hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain':
-                                is_left_team = closest_bot.team == 'Red'
-                                goal_x = FIELD_WIDTH if is_left_team else 0
-                                goal_y = FIELD_HEIGHT // 2
-                                dx_to_goal = goal_x - rotated_x
-                                dy_to_goal = goal_y - rotated_y
-                                shot_distance = math.hypot(dx_to_goal, dy_to_goal)
-                                MIN_POWER = 12.0
-                                MAX_POWER = 22.0
-                                power_factor = shot_distance / (FIELD_WIDTH // 2)
-                                shot_power = MIN_POWER + (MAX_POWER - MIN_POWER) * power_factor
-                                ball.dx = (dx_to_goal / shot_distance) * shot_power
-                                ball.dy = (dy_to_goal / shot_distance) * shot_power
+                                if getattr(closest_bot, '_striker_action', None) == 'shoot':
+                                    is_left_team = closest_bot.team == 'Red'
+                                    goal_x = FIELD_WIDTH if is_left_team else 0
+                                    goal_y = FIELD_HEIGHT // 2
+                                    dx_to_goal = goal_x - rotated_x
+                                    dy_to_goal = goal_y - rotated_y
+                                    shot_distance = math.hypot(dx_to_goal, dy_to_goal)
+                                    MIN_POWER = 12.0
+                                    MAX_POWER = 22.0
+                                    power_factor = shot_distance / (FIELD_WIDTH // 2)
+                                    shot_power = MIN_POWER + (MAX_POWER - MIN_POWER) * power_factor
+                                    ball.dx = (dx_to_goal / shot_distance) * shot_power
+                                    ball.dy = (dy_to_goal / shot_distance) * shot_power
+                                else:
+                                    if self.target_teammate:
+                                        dx = self.target_teammate.x - rotated_x
+                                        dy = self.target_teammate.y - rotated_y
+                                        dist = math.hypot(dx, dy)
+                                        base_speed = math.hypot(self.stored_ball_speed[0], self.stored_ball_speed[1])
+                                        pass_speed = self.calculate_pass_speed(dist, base_speed)
+                                        ball.dx = (dx / dist) * pass_speed
+                                        ball.dy = (dy / dist) * pass_speed
+                                    else:
+                                        # No teammate: release ball forward
+                                        direction = 1 if closest_bot.team == 'Red' else -1
+                                        ball.dx = direction * 15.0
+                                        ball.dy = 0.0
                             else:
+                                # Always release the pass after rotation for non-strikers
                                 if self.target_teammate:
                                     dx = self.target_teammate.x - rotated_x
                                     dy = self.target_teammate.y - rotated_y
@@ -390,8 +444,10 @@ class FootballField:
                                     ball.dx = (dx / dist) * pass_speed
                                     ball.dy = (dy / dist) * pass_speed
                                 else:
-                                    self.possession_start_time = self.elapsed_time - (self.possession_duration - 1)
-                                    return
+                                    # No teammate: release ball forward
+                                    direction = 1 if closest_bot.team == 'Red' else -1
+                                    ball.dx = direction * 15.0
+                                    ball.dy = 0.0
                             self.ball_possessing_bot = None
                             self.possession_start_time = -1
                             self.target_teammate = None
@@ -1304,3 +1360,18 @@ class FootballField:
                 end += 2 * math.pi
             angle = start + (end - start) * t
         return angle % (2 * math.pi)
+
+    def should_shoot_striker(self, bot):
+        # Striker should shoot if close to the opponent's goal and not heavily marked
+        is_left_team = bot.team == 'Red'
+        goal_x = FIELD_WIDTH if is_left_team else 0
+        # Distance to goal
+        distance_to_goal = abs(goal_x - bot.x)
+        # Only shoot if within 40% of field width to goal
+        close_enough = distance_to_goal < FIELD_WIDTH * 0.4
+        # Check for nearby opponents (marking)
+        MARKING_DISTANCE = 100
+        opponents = [agent for agent in self.agents if agent.team != bot.team]
+        min_distance = min((math.hypot(agent.x - bot.x, agent.y - bot.y) for agent in opponents), default=9999)
+        not_marked = min_distance > MARKING_DISTANCE
+        return close_enough and not_marked
