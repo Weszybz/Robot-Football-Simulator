@@ -332,27 +332,73 @@ class FootballField:
                         
                         # --- SHOOTING OR PASSING MECHANIC FOR ALL PLAYERS ---
                         in_opponent_half = (closest_bot.team == 'Red' and closest_bot.x > FIELD_WIDTH // 2) or (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH // 2)
-                        # New: also shoot if inside opponent's 18-yard box
+                        # Check if inside opponent's 18-yard box
                         in_opponent_box = (
-                            (closest_bot.team == 'Red' and closest_bot.x > FIELD_WIDTH * 0.75) or
-                            (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH * 0.25)
+                            (closest_bot.team == 'Red' and closest_bot.x > 3 * (FIELD_WIDTH // 4)) or
+                            (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH // 4)
                         )
-                        if in_opponent_half or in_opponent_box:
-                            # Always reset and attempt shooting rotation
-                            is_left_team = closest_bot.team == 'Red'
-                            goal_x = FIELD_WIDTH if is_left_team else 0
-                            goal_y = FIELD_HEIGHT // 2
-                            target_angle = math.atan2(goal_y - closest_bot.y, goal_x - closest_bot.x)
-                            self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
-                                self.initial_contact_angle, target_angle
-                            )
-                            self.target_teammate = None
-                            self.second_target = None
-                            self.ball_distance = distance
-                            self.stored_ball_speed = (ball.dx, ball.dy)
+                        
+                        # Get 18-yard box target position
+                        is_left_team = closest_bot.team == 'Red'
+                        box_target_x = 3 * (FIELD_WIDTH // 4) if is_left_team else FIELD_WIDTH // 4
+                        box_target_y = FIELD_HEIGHT // 2
+                        
+                        # Calculate goal position
+                        goal_x = FIELD_WIDTH if is_left_team else 0
+                        goal_y = FIELD_HEIGHT // 2
+                        
+                        # If striker and in opponent half but not in box, move to box first
+                        is_striker = hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain'
+                        if is_striker and in_opponent_half and not in_opponent_box:
+                            # Move towards 18-yard box
+                            dx = (box_target_x - closest_bot.x) * 0.15
+                            dy = (box_target_y - closest_bot.y) * 0.15
+                            speed = math.hypot(dx, dy)
+                            if speed > 4.0:
+                                dx = (dx / speed) * 4.0
+                                dy = (dy / speed) * 4.0
+                            closest_bot.x += dx
+                            closest_bot.y += dy
+                            closest_bot._striker_action = 'move_to_box'
+                            # Keep ball with the striker while moving
+                            ball.x = closest_bot.x + math.cos(self.initial_contact_angle) * self.ball_distance
+                            ball.y = closest_bot.y + math.sin(self.initial_contact_angle) * self.ball_distance
                             ball.dx = 0
                             ball.dy = 0
-                            closest_bot._striker_action = 'shoot'
+                        elif in_opponent_box or (is_striker and getattr(closest_bot, '_striker_action', None) == 'move_to_box' and abs(closest_bot.x - box_target_x) < 10):
+                            # Once in box, first move closer to goal
+                            distance_to_goal = math.hypot(goal_x - closest_bot.x, goal_y - closest_bot.y)
+                            optimal_shooting_distance = FIELD_WIDTH // 6  # About 1/6th of field width from goal
+                            
+                            if distance_to_goal > optimal_shooting_distance:
+                                # Move towards optimal shooting position
+                                dx = (goal_x - closest_bot.x) * 0.15
+                                dy = (goal_y - closest_bot.y) * 0.15
+                                speed = math.hypot(dx, dy)
+                                if speed > 4.0:
+                                    dx = (dx / speed) * 4.0
+                                    dy = (dy / speed) * 4.0
+                                closest_bot.x += dx
+                                closest_bot.y += dy
+                                closest_bot._striker_action = 'move_to_shoot'
+                                # Keep ball with the striker while moving
+                                ball.x = closest_bot.x + math.cos(self.initial_contact_angle) * self.ball_distance
+                                ball.y = closest_bot.y + math.sin(self.initial_contact_angle) * self.ball_distance
+                                ball.dx = 0
+                                ball.dy = 0
+                            else:
+                                # At optimal shooting distance, prepare to shoot
+                                target_angle = math.atan2(goal_y - closest_bot.y, goal_x - closest_bot.x)
+                                self.target_release_angle, self.rotate_clockwise = self.get_shortest_rotation(
+                                    self.initial_contact_angle, target_angle
+                                )
+                                self.target_teammate = None
+                                self.second_target = None
+                                self.ball_distance = distance
+                                self.stored_ball_speed = (ball.dx, ball.dy)
+                                ball.dx = 0
+                                ball.dy = 0
+                                closest_bot._striker_action = 'shoot'
                         else:
                             # Use passing mechanic
                             teammate_options = self.find_nearest_teammate(closest_bot)
@@ -385,7 +431,8 @@ class FootballField:
                         self.stored_ball_speed = (ball.dx, ball.dy)
                         ball.dx = 0
                         ball.dy = 0
-                        closest_bot._striker_action = None
+                        if not is_striker or getattr(closest_bot, '_striker_action', None) != 'move_to_box':
+                            closest_bot._striker_action = None
                         
                         # Check for saves after ball-bot collision
                         is_goalkeeper_zone = (
@@ -405,10 +452,9 @@ class FootballField:
                     # If this bot has possession, update ball position with smooth rotation
                     if self.ball_possessing_bot == closest_bot:
                         possession_time = self.elapsed_time - self.possession_start_time
-                        # --- PANIC SHOT LOGIC ---
+                        # --- SHOOTING LOGIC ---
                         in_opponent_half = (closest_bot.team == 'Red' and closest_bot.x > FIELD_WIDTH // 2) or (closest_bot.team == 'Blue' and closest_bot.x < FIELD_WIDTH // 2)
                         is_striker = hasattr(closest_bot, 'position_brain') and closest_bot.position_brain.__class__.__name__ == 'StrikerBrain'
-                        panic_shot = False
                         panic_pass = False
                         if is_striker and getattr(closest_bot, '_striker_action', None) == 'shoot':
                             # Always move striker toward goal while rotating
@@ -422,15 +468,11 @@ class FootballField:
                                 move_dy = (move_dy / speed) * 4.0
                             closest_bot.x += move_dx
                             closest_bot.y += move_dy
-                            # Panic shot if pushed back to own half, rotation takes too long, or close to goal
-                            distance_to_goal = abs(goal_x - closest_bot.x)
-                            if not in_opponent_half or possession_time > self.possession_duration * 1.5 or distance_to_goal < FIELD_WIDTH / 4:
-                                panic_shot = True
-                        elif getattr(closest_bot, '_striker_action', None) != 'shoot':
+                        # elif getattr(closest_bot, '_striker_action', None) != 'shoot':
                             # For all other passing (not shooting): forced pass if rotation takes too long
-                            if possession_time > self.possession_duration * 1.5:
-                                panic_pass = True
-                        if (possession_time < self.possession_duration and not panic_shot and not panic_pass):
+                            # if possession_time > self.possession_duration * 1.5:
+                                # panic_pass = True
+                        if (possession_time < self.possession_duration and not panic_pass):
                             t = possession_time / self.possession_duration
                             t = self._smooth_step(t)
                             # Use robust angle interpolation
