@@ -110,38 +110,34 @@ class StrikerBrain:
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
-        ball_x = percepts['ball_x']
-        ball_y = percepts['ball_y']
+        ball_x = percepts.get('ball_x', x)
+        ball_y = percepts.get('ball_y', y)
         team = percepts.get('team', None)
+        field_width = percepts.get('field_width', 0)
+        field_height = percepts.get('field_height', 0)
+        # Always push striker above halfway when ball is deep in own half
+        if team == 'Red' and ball_x < field_width * 0.25:
+            target_x = field_width * 0.60
+            target_y = field_height // 2
+            dx = (target_x - x) * 0.05
+            dy = (target_y - y) * 0.05
+            return dx, dy
+        if team == 'Blue' and ball_x > field_width * 0.75:
+            target_x = field_width * 0.40
+            target_y = field_height // 2
+            dx = (target_x - x) * 0.05
+            dy = (target_y - y) * 0.05
+            return dx, dy
         dx = (ball_x - x) * 0.15
         dy = (ball_y - y) * 0.15
         speed = math.hypot(dx, dy)
         if speed > 8.0:
             dx = (dx / speed) * 8.0
             dy = (dy / speed) * 8.0
-        # Slug mode: if team does not have possession, move extremely slow
-        team_has_possession = False
-        if hasattr(percepts, 'possession_team') and 'team' in percepts:
-            team_has_possession = (percepts['possession_team'] == percepts['team'])
-        elif 'possession_team' in percepts and 'team' in percepts:
-            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        team_has_possession = percepts.get('team_has_possession', False)
         if not team_has_possession:
             dx *= 0.1
             dy *= 0.1
-        # If ball is in first quarter of Red side, Red striker moves to 60% of field width (10% above halfway)
-        if team == 'Red' and ball_x < FIELD_WIDTH * 0.25:
-            target_x = FIELD_WIDTH * 0.60  # 0.5 + 0.1
-            target_y = FIELD_HEIGHT // 2
-            dx = (target_x - x) * 0.05
-            dy = (target_y - y) * 0.05
-            return dx, dy
-        # If ball is in first quarter of Blue side, Blue striker moves to 40% of field width (10% above halfway)
-        if team == 'Blue' and ball_x < FIELD_WIDTH * 0.25:
-            target_x = FIELD_WIDTH * 0.40  # 0.5 - 0.1
-            target_y = FIELD_HEIGHT // 2
-            dx = (target_x - x) * 0.05
-            dy = (target_y - y) * 0.05
-            return dx, dy
         return dx, dy
 
 

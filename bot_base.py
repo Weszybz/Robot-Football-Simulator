@@ -27,7 +27,17 @@ class Bot:
         self.uses_separation_rule = not isinstance(position_brain, GoalkeeperBrain)  # Goalkeepers don't use separation
 
     def update(self, canvas, agents, objects):
+        # Use perception_brain to sense the world (teammates, opponents, ball, etc.)
         percepts = self.perception_brain.sense(self, agents, objects)
+        # Add team and role info to percepts for use in brains
+        percepts['team'] = self.team
+        if hasattr(self.position_brain, 'role'):
+            percepts['role'] = getattr(self.position_brain, 'role', None)
+        # Add teammates and opponents as seen by perception (if not already present)
+        if 'teammates' not in percepts:
+            percepts['teammates'] = [(agent.x, agent.y) for agent in agents if agent.team == self.team and agent != self]
+        if 'opponents' not in percepts:
+            percepts['opponents'] = [(agent.x, agent.y) for agent in agents if agent.team != self.team]
         self.dx, self.dy = self.position_brain.think_and_act(
             percepts, self.x, self.y, self.speed_left, self.speed_right
         )

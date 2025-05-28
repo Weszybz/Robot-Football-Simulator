@@ -36,13 +36,14 @@ class FOVPerception(PerceptionBrain):
             return 0, 0
     def sense(self, bot, agents, objects):
         ball = next((o for o in objects if hasattr(o, 'is_ball') and o.is_ball), None)
+        percepts = {}
         if ball:
             dx = ball.x - bot.x
             dy = ball.y - bot.y
             dist = math.hypot(dx, dy)
             angle_to_ball = math.atan2(dy, dx)
             rel_angle = ((angle_to_ball - bot.theta + math.pi) % (2 * math.pi)) - math.pi
-            return {
+            percepts = {
                 'distance_to_ball': dist,
                 'angle_to_ball': rel_angle,
                 'ball_x': ball.x,
@@ -50,7 +51,13 @@ class FOVPerception(PerceptionBrain):
                 'ball_dx': ball.dx,
                 'ball_dy': ball.dy
             }
-        return {}
+        # Add field dimensions and team possession info if available
+        from ball import FIELD_WIDTH, FIELD_HEIGHT
+        percepts['field_width'] = FIELD_WIDTH
+        percepts['field_height'] = FIELD_HEIGHT
+        # Team possession info can be set externally if needed
+        percepts['team_has_possession'] = getattr(bot, 'team_has_possession', False)
+        return percepts
 
 class MemoryPerception(PerceptionBrain):
     def __init__(self):
@@ -147,9 +154,12 @@ class SubsumptionPerception(PerceptionBrain):
                 'ball_y': ball.y,
                 'ball_dx': ball.dx,
                 'ball_dy': ball.dy,
-                'opponents': opponents  # Add opponents to percepts
+                'opponents': opponents,  # Add opponents to percepts
+                'field_width': globals().get('FIELD_WIDTH', 1000),
+                'field_height': globals().get('FIELD_HEIGHT', 500),
+                'team_has_possession': getattr(bot, 'team_has_possession', False)
             }
-        return {'opponents': opponents}  # Return opponents even if ball not found
+        return {'opponents': opponents, 'field_width': globals().get('FIELD_WIDTH', 1000), 'field_height': globals().get('FIELD_HEIGHT', 500), 'team_has_possession': getattr(bot, 'team_has_possession', False)}  # Return opponents even if ball not found
 
     def think_and_act(self, percepts, x, y, speed_left, speed_right):
         if not percepts:
