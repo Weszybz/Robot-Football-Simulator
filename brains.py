@@ -89,80 +89,55 @@ class GoalkeeperBrain:
         speed = min(4.0, max(1.5, abs(dy) / 15))
         return 0.0, direction * speed
 
+        # Freeze movement if in possession
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if team_has_possession:
+            return 0.0, 0.0
+
 
 class StrikerBrain:
     """
-    Smart offensive AI:
-    - Moves vertically to align with ball
-    - Gets behind the ball
-    - When close, "kicks" ball toward goal by positioning
+    Striker AI that focuses on positioning and moving towards the ball. Shooting is handled in football_field.py.
     """
-
-    def __init__(self, perception_type=None):
+    def __init__(self, role='center_forward', perception_type=None):
         self.perception_type = perception_type
+        self.role = role  # 'center_forward' or 'wide_forward'
 
-    # TODO: Striker needs to be aim at the goal everytime.
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
-
-        ball_x = percepts['ball_x']
-        ball_y = percepts['ball_y']
-        ball_dx = percepts.get('ball_dx', 0.0)
-        ball_dy = percepts.get('ball_dy', 0.0)
-        is_closest = percepts.get('is_closest', False)
-        ball_from_teammate = percepts.get('ball_from_teammate', False)
-
-        is_left_team = x < FIELD_WIDTH // 2
-        goal_x = FIELD_WIDTH if is_left_team else 0
-        goal_top = (FIELD_HEIGHT - GOAL_WIDTH) // 2
-        goal_bottom = (FIELD_HEIGHT + GOAL_WIDTH) // 2
-        goal_center_y = (goal_top + goal_bottom) // 2
-
-        dx, dy = 0.0, 0.0
-
-        # --- Predict Ball Y if from teammate ---
-        if ball_from_teammate and ball_dx != 0:
-            time_to_reach = (x - ball_x) / ball_dx
-            if time_to_reach < 0:
-                predicted_ball_y = ball_y
-            else:
-                predicted_ball_y = ball_y + ball_dy * time_to_reach
-                bounces = 0
-                while predicted_ball_y < 0 or predicted_ball_y > FIELD_HEIGHT:
-                    if predicted_ball_y < 0:
-                        predicted_ball_y = -predicted_ball_y
-                    elif predicted_ball_y > FIELD_HEIGHT:
-                        predicted_ball_y = 2 * FIELD_HEIGHT - predicted_ball_y
-                    bounces += 1
-                    if bounces > 2:
-                        break
-        else:
-            predicted_ball_y = ball_y  # No prediction
-
-        # --- Calculate Aiming Offset ---
-        dx_to_goal = goal_x - x
-        dy_to_goal = goal_center_y - predicted_ball_y
-        desired_deflection_angle = math.atan2(dy_to_goal, dx_to_goal)
-
-        # Offset Y position to align shot toward goal
-        distance_to_goal = abs(goal_x - x)
-        offset_magnitude = 25.0 * math.sin(desired_deflection_angle) * (distance_to_goal / FIELD_WIDTH)
-        desired_y = predicted_ball_y + offset_magnitude
-
-        # --- Move Vertically Toward Desired Y ---
-        dy_to_desired = desired_y - y
-        if abs(dy_to_desired) > 5:
-            direction = 1 if dy_to_desired > 0 else -1
-            speed = min(8.0, max(2.0, abs(dy_to_desired) / 10))
-            dy = direction * speed
-        else:
-            # Close to desired position and ball, push ball towards goal
-            ball_close = abs(ball_x - x) < 25
-            if ball_close and is_closest:
-                dx = 6.0 if is_left_team else -6.0
-                dy = 0.0
-
+        ball_x = percepts.get('ball_x', x)
+        ball_y = percepts.get('ball_y', y)
+        team = percepts.get('team', None)
+        field_width = percepts.get('field_width', 0)
+        field_height = percepts.get('field_height', 0)
+        # Always push striker above halfway when ball is deep in own half
+        if team == 'Red' and ball_x < field_width * 0.25:
+            target_x = field_width * 0.60
+            target_y = field_height // 2
+            dx = (target_x - x) * 0.05
+            dy = (target_y - y) * 0.05
+            return dx, dy
+        if team == 'Blue' and ball_x > field_width * 0.75:
+            target_x = field_width * 0.40
+            target_y = field_height // 2
+            dx = (target_x - x) * 0.05
+            dy = (target_y - y) * 0.05
+            return dx, dy
+        dx = (ball_x - x) * 0.15
+        dy = (ball_y - y) * 0.15
+        speed = math.hypot(dx, dy)
+        if speed > 8.0:
+            dx = (dx / speed) * 8.0
+            dy = (dy / speed) * 8.0
+        team_has_possession = percepts.get('team_has_possession', False)
+        if not team_has_possession:
+            dx *= 0.1
+            dy *= 0.1
         return dx, dy
 
 
@@ -178,7 +153,6 @@ class DefenderBrain:
                 self.base_x = 200
                 self.base_y = FIELD_HEIGHT // 4
             elif self.role == 'right_back':
-                # self.x_min, self.x_max = FIELD_WIDTH // 4, FIELD_WIDTH // 2
                 self.base_x = 200
                 self.base_y = 3 * FIELD_HEIGHT // 4
         else:
@@ -186,7 +160,6 @@ class DefenderBrain:
                 self.base_x = FIELD_WIDTH - 200
                 self.base_y = FIELD_HEIGHT // 4
             elif self.role == 'right_back':
-                # self.x_min, self.x_max = FIELD_WIDTH // 2, 3 * FIELD_WIDTH // 4
                 self.base_x = FIELD_WIDTH - 200
                 self.base_y = 3 * FIELD_HEIGHT // 4
 
@@ -199,13 +172,17 @@ class DefenderBrain:
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
         teammates = percepts.get('teammates', [])
+        ball_from_teammate = percepts.get('ball_from_teammate', False)
 
         is_left_team = x < FIELD_WIDTH // 2
 
         if not self.initialized:
             self.setup(is_left_team)
 
-        # 1. Calculate whether ball is inside defender's field of view (half field)
+        # Determine if we're in possession based on ball_from_teammate
+        team_has_possession = ball_from_teammate
+
+        # 1. Calculate whether ball is inside defender's field of view
         if is_left_team:
             should_track = ball_x <= FIELD_WIDTH // 3
         else:
@@ -229,15 +206,39 @@ class DefenderBrain:
             dy += move_dy
             return dx, dy
 
-        # --- Ball IS in view -> track vertically and stay inside zone ---
+        # --- Ball IS in view ---
+        if team_has_possession:
+            # When in possession, maintain more disciplined positioning
+            # Right back stays on right, left back stays on left
+            target_y = ball_y
+            if self.role == 'right_back':
+                target_y = max(FIELD_HEIGHT // 2, min(ball_y, 3 * FIELD_HEIGHT // 4))
+            else:  # left_back
+                target_y = min(FIELD_HEIGHT // 2, max(ball_y, FIELD_HEIGHT // 4))
+            
+            # Move towards target position with controlled speed
+            vertical_diff = target_y - y
+            if abs(vertical_diff) > 5:
+                direction_y = 1 if vertical_diff > 0 else -1
+                speed_y = min(5.0, max(2.0, abs(vertical_diff) / 10))  # Reduced speed when in possession
+                dy += direction_y * speed_y
+        else:
+            # When defending, track more aggressively
+            vertical_diff = ball_y - y
+            if abs(vertical_diff) > 5:
+                direction_y = 1 if vertical_diff > 0 else -1
+                speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
+                dy += direction_y * speed_y
 
-        # Track ball vertically
-        vertical_diff = ball_y - y
-        if abs(vertical_diff) > 5:
-            direction_y = 1 if vertical_diff > 0 else -1
-            speed_y = min(7.0, max(2.0, abs(vertical_diff) / 10))
-            dy += direction_y * speed_y
-
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx *= 0.2
+            dy *= 0.2
         return dx, dy
 
     def _move_towards(self, x, y, target_x, target_y):
@@ -252,55 +253,55 @@ class DefenderBrain:
 
 class MidfielderBrain:
     def __init__(self, perception_type=None):
-        # self.base_x = FIELD_WIDTH // 2
         self.base_y = FIELD_HEIGHT // 2
         self.perception_type = perception_type
 
     def think_and_act(self, percepts, x, y, sl, sr):
         if not percepts:
             return 0.0, 0.0
-
         ball_x = percepts['ball_x']
         ball_y = percepts['ball_y']
-
-        is_left_team = x < FIELD_WIDTH // 2
-
-        track_zone_x = 200  # Track/vision zone
-
-        # Determine if ball is in track zone
-        if is_left_team:
-            should_track = ball_x <= x + track_zone_x
+        teammates = percepts.get('teammates', [])
+        # Midfielders always hold back: stay behind the ball in their own half
+        if percepts.get('team', None) == 'Red':
+            support_x = min(ball_x - 40, FIELD_WIDTH // 2 - 10)
         else:
-            should_track = ball_x >= x - track_zone_x
-
-        # If not tracking, return to base
-        if not should_track:
-            if is_left_team:
-                return self._move_towards(x, y, FIELD_WIDTH // 3, self.base_y)
-            else:
-                return self._move_towards(x, y, FIELD_WIDTH * 2 // 3, self.base_y)
-
-        # Track vertically with ball
-        dy = ball_y - y
-        aligned_vertically = abs(dy) < 10
-
-        if not aligned_vertically:
-            direction = 1 if dy > 0 else -1
-            speed = min(7.0, max(2.0, abs(dy) / 10))
-            return direction * speed, direction * speed
-
-        # Push forward toward goal
-        push_speed = 4.0 if is_left_team else -4.0
-        return push_speed, push_speed
-
-    def _move_towards(self, x, y, target_x, target_y):
-        dx = target_x - x
-        dy = target_y - y
-        dist = (dx**2 + dy**2)**0.5
-        if dist < 3:
-            return 0.0, 0.0
-        move_speed = min(5.0, dist / 5.0)
-        return (dx / dist) * move_speed, (dy / dist) * move_speed
+            support_x = max(ball_x + 40, FIELD_WIDTH // 2 + 10)
+        support_y = ball_y
+        dx = (support_x - x) * 0.08
+        dy = (support_y - y) * 0.08
+        # Increased repulsion for midfielders
+        for mate_x, mate_y in teammates:
+            dist = math.hypot(x - mate_x, y - mate_y)
+            if dist < 120 and dist > 0:
+                dx += (x - mate_x) / dist * 4.0
+                dy += (y - mate_y) / dist * 4.0
+        # Determine if this bot is on the defending team
+        defending = False
+        if hasattr(percepts, 'possession_team'):
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        elif 'possession_team' in percepts:
+            defending = (percepts['possession_team'] is not None and percepts['possession_team'] != percepts.get('team', None))
+        else:
+            # Fallback: if ball is on the other side of the field
+            if 'ball_x' in percepts and 'team' in percepts:
+                if percepts['team'] == 'Red':
+                    defending = percepts['ball_x'] < FIELD_WIDTH // 2
+                else:
+                    defending = percepts['ball_x'] > FIELD_WIDTH // 2
+        if defending:
+            dx *= 0.7
+            dy *= 0.7
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx *= 0.15
+            dy *= 0.15
+        return dx, dy
 
 
 class FieldAwareBrain:
@@ -328,4 +329,13 @@ class FieldAwareBrain:
 
         direction = 1 if dy > 0 else -1
         speed = 8.0 if in_attacking_half else 4.0
-        return direction * speed, direction * speed
+        # Slug mode: if team does not have possession, move extremely slow
+        team_has_possession = False
+        if hasattr(percepts, 'possession_team') and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        elif 'possession_team' in percepts and 'team' in percepts:
+            team_has_possession = (percepts['possession_team'] == percepts['team'])
+        if not team_has_possession:
+            dx = direction * speed * 0.2
+            dy = direction * speed * 0.2
+        return dx, dy

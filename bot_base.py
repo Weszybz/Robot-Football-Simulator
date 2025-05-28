@@ -1,6 +1,10 @@
 import math
 import random
-from football_field import FIELD_MARGIN, FIELD_HEIGHT, FIELD_WIDTH
+from constants import FIELD_MARGIN, FIELD_HEIGHT, FIELD_WIDTH
+from brains import GoalkeeperBrain, DefenderBrain
+
+MIN_SPACING = 20.0
+REPULSION_FACTOR = 5.0
 
 class Bot:
     def __init__(self, x, y, team_color, position_brain, perception_brain):
@@ -18,9 +22,22 @@ class Bot:
         self.position_brain = position_brain
         self.perception_brain = perception_brain
         self.color = 'red' if team_color == 'Red' else 'blue'
+        
+        # Determine if this bot should use the separation rule based on its brain type
+        self.uses_separation_rule = not isinstance(position_brain, GoalkeeperBrain)  # Goalkeepers don't use separation
 
     def update(self, canvas, agents, objects):
+        # Use perception_brain to sense the world (teammates, opponents, ball, etc.)
         percepts = self.perception_brain.sense(self, agents, objects)
+        # Add team and role info to percepts for use in brains
+        percepts['team'] = self.team
+        if hasattr(self.position_brain, 'role'):
+            percepts['role'] = getattr(self.position_brain, 'role', None)
+        # Add teammates and opponents as seen by perception (if not already present)
+        if 'teammates' not in percepts:
+            percepts['teammates'] = [(agent.x, agent.y) for agent in agents if agent.team == self.team and agent != self]
+        if 'opponents' not in percepts:
+            percepts['opponents'] = [(agent.x, agent.y) for agent in agents if agent.team != self.team]
         self.dx, self.dy = self.position_brain.think_and_act(
             percepts, self.x, self.y, self.speed_left, self.speed_right
         )
